@@ -1,3 +1,12 @@
+server:
+  port: ${RECOMMENDATION_SERVICE_PORT:8083}
+
 spring:
   application:
     name: recommendation-service
+
+services:
+  game-service:
+    url: ${GAME_SERVICE_URL:http://localhost:8081}
+  library-service:
+    url: ${LIBRARY_SERVICE_URL:http://localhost:8082}
