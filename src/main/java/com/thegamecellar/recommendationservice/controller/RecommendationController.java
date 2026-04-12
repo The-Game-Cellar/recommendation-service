@@ -2,10 +2,14 @@ package com.thegamecellar.recommendationservice.controller;
 
 import com.thegamecellar.recommendationservice.model.dto.RecommendationDTO;
 import com.thegamecellar.recommendationservice.service.RecommendationService;
+import com.thegamecellar.recommendationservice.service.WildCardService;
 import com.thegamecellar.recommendationservice.util.JwtUtils;
 import lombok.RequiredArgsConstructor;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -13,18 +17,28 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
+@Validated
 @RestController
 @RequestMapping("/api/v1/recommendations")
 @RequiredArgsConstructor
 public class RecommendationController {
 
     private final RecommendationService recommendationService;
+    private final WildCardService wildCardService;
 
     @GetMapping("/personalized")
     public ResponseEntity<List<RecommendationDTO>> getPersonalized(
             Authentication authentication,
-            @RequestParam(defaultValue = "10") int limit) {
+            @RequestParam(defaultValue = "10") @Min(1) @Max(50) int limit) {
         String token = JwtUtils.getBearerToken(authentication);
         return ResponseEntity.ok(recommendationService.getPersonalized(token, limit));
+    }
+
+    @GetMapping("/wildcard")
+    public ResponseEntity<List<RecommendationDTO>> getWildCard(
+            Authentication authentication,
+            @RequestParam(defaultValue = "10") @Min(1) @Max(50) int limit) {
+        String token = JwtUtils.getBearerToken(authentication);
+        return ResponseEntity.ok(wildCardService.getWildCard(token, limit));
     }
 }
