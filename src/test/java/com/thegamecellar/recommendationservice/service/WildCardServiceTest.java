@@ -18,6 +18,9 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -36,7 +39,7 @@ class WildCardServiceTest {
     void getWildCard_excludes_games_already_in_collection() {
         when(libraryServiceClient.getGames("token")).thenReturn(List.of(ownedGame(1)));
         when(libraryServiceClient.getPlatforms("token")).thenReturn(List.of(platform("PC")));
-        when(gameServiceClient.getPopularGames("PC")).thenReturn(List.of(game(1, "Owned Game"), game(2, "New Game")));
+        when(gameServiceClient.getRandomGames(anyString(), anyInt())).thenReturn(List.of(game(1, "Owned Game"), game(2, "New Game")));
 
         List<RecommendationDTO> result = wildCardService.getWildCard("token", 10);
 
@@ -48,7 +51,7 @@ class WildCardServiceTest {
     void getWildCard_fetches_global_popular_when_user_has_no_platforms() {
         when(libraryServiceClient.getGames("token")).thenReturn(List.of());
         when(libraryServiceClient.getPlatforms("token")).thenReturn(List.of());
-        when(gameServiceClient.getPopularGames(null)).thenReturn(List.of(game(1, "Popular Game")));
+        when(gameServiceClient.getRandomGames(isNull(), anyInt())).thenReturn(List.of(game(1, "Popular Game")));
 
         List<RecommendationDTO> result = wildCardService.getWildCard("token", 10);
 
@@ -59,7 +62,7 @@ class WildCardServiceTest {
     void getWildCard_respects_limit() {
         when(libraryServiceClient.getGames("token")).thenReturn(List.of());
         when(libraryServiceClient.getPlatforms("token")).thenReturn(List.of(platform("PC")));
-        when(gameServiceClient.getPopularGames("PC")).thenReturn(
+        when(gameServiceClient.getRandomGames(anyString(), anyInt())).thenReturn(
                 List.of(game(1, "A"), game(2, "B"), game(3, "C"), game(4, "D"), game(5, "E"))
         );
 
@@ -81,7 +84,7 @@ class WildCardServiceTest {
     void getWildCard_returns_wildcard_reason() {
         when(libraryServiceClient.getGames("token")).thenReturn(List.of());
         when(libraryServiceClient.getPlatforms("token")).thenReturn(List.of());
-        when(gameServiceClient.getPopularGames(null)).thenReturn(List.of(game(1, "Some Game")));
+        when(gameServiceClient.getRandomGames(isNull(), anyInt())).thenReturn(List.of(game(1, "Some Game")));
 
         List<RecommendationDTO> result = wildCardService.getWildCard("token", 10);
 

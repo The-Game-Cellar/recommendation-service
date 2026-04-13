@@ -18,6 +18,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -61,7 +62,8 @@ public class SimilarGameService {
         List<GameDTO> candidates = new ArrayList<>();
         for (String genre : genres) {
             if (genre != null && !genre.isBlank()) {
-                candidates.addAll(gameServiceClient.searchByGenre(genre, null));
+                int page = ThreadLocalRandom.current().nextInt(1, 21);
+                candidates.addAll(gameServiceClient.searchByGenre(genre, null, page));
             }
         }
         return candidates;

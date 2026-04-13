@@ -7,6 +7,9 @@ import com.thegamecellar.recommendationservice.service.RecommendationService;
 import com.thegamecellar.recommendationservice.service.SimilarGameService;
 import com.thegamecellar.recommendationservice.service.WildCardService;
 import com.thegamecellar.recommendationservice.util.JwtUtils;
+// TODO (post-MVP): Implement rate limiting to prevent abuse. Each request can trigger multiple
+//  downstream calls to Game Service and Library Service. Rate limiting should be handled
+//  centrally in API Gateway (port 8000) rather than per-service.
 import lombok.RequiredArgsConstructor;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;

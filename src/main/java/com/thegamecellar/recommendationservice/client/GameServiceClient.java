@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.util.Collections;
 import java.util.List;
@@ -38,11 +39,12 @@ public class GameServiceClient {
 
     public List<GameDTO> getPopularGames(String platform) {
         try {
-            String url = gameServiceUrl + "/api/v1/games/popular";
+            UriComponentsBuilder builder = UriComponentsBuilder
+                    .fromUriString(gameServiceUrl + "/api/v1/games/popular");
             if (platform != null && !platform.isBlank()) {
-                url += "?platform=" + platform;
+                builder.queryParam("platform", platform);
             }
-            GameSearchDTO response = restTemplate.getForObject(url, GameSearchDTO.class);
+            GameSearchDTO response = restTemplate.getForObject(builder.toUriString(), GameSearchDTO.class);
             if (response == null || response.getGames() == null) {
                 return Collections.emptyList();
             }
@@ -53,22 +55,45 @@ public class GameServiceClient {
         }
     }
 
-    public List<GameDTO> searchByGenre(String genre, String platform) {
+    public List<GameDTO> searchByGenre(String genre, String platform, int page) {
         try {
-            StringBuilder url = new StringBuilder(gameServiceUrl + "/api/v1/games/search?pageSize=40");
+            UriComponentsBuilder builder = UriComponentsBuilder
+                    .fromUriString(gameServiceUrl + "/api/v1/games/search")
+                    .queryParam("pageSize", 40)
+                    .queryParam("page", page);
             if (genre != null && !genre.isBlank()) {
-                url.append("&genre=").append(genre);
+                builder.queryParam("genre", genre);
             }
             if (platform != null && !platform.isBlank()) {
-                url.append("&platform=").append(platform);
+                builder.queryParam("platform", platform);
             }
-            GameSearchDTO response = restTemplate.getForObject(url.toString(), GameSearchDTO.class);
+            GameSearchDTO response = restTemplate.getForObject(builder.toUriString(), GameSearchDTO.class);
             if (response == null || response.getGames() == null) {
                 return Collections.emptyList();
             }
             return response.getGames();
         } catch (RestClientException ex) {
             log.warn("Failed to search games by genre '{}' from Game Service: {}", genre, ex.getMessage());
+            return Collections.emptyList();
+        }
+    }
+
+    public List<GameDTO> getRandomGames(String platform, int page) {
+        try {
+            UriComponentsBuilder builder = UriComponentsBuilder
+                    .fromUriString(gameServiceUrl + "/api/v1/games/search")
+                    .queryParam("pageSize", 20)
+                    .queryParam("page", page);
+            if (platform != null && !platform.isBlank()) {
+                builder.queryParam("platform", platform);
+            }
+            GameSearchDTO response = restTemplate.getForObject(builder.toUriString(), GameSearchDTO.class);
+            if (response == null || response.getGames() == null) {
+                return Collections.emptyList();
+            }
+            return response.getGames();
+        } catch (RestClientException ex) {
+            log.warn("Failed to fetch random games (platform={}, page={}) from Game Service: {}", platform, page, ex.getMessage());
             return Collections.emptyList();
         }
     }

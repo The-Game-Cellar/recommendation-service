@@ -7,6 +7,7 @@ import com.thegamecellar.recommendationservice.model.dto.game.GameDTO;
 import com.thegamecellar.recommendationservice.model.dto.library.UserGameDTO;
 import com.thegamecellar.recommendationservice.model.dto.library.UserPlatformDTO;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -14,11 +15,22 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class WildCardService {
+
+    // TODO (post-MVP): Determine max page dynamically based on totalCount from Game Service response
+    //  instead of using a fixed upper bound. RAWG has ~500k games (~25 000 pages at pageSize=20)
+    //  so 500 covers a reasonable slice, but a dynamic solution would be more correct.
+    // TODO (post-MVP): Precision fetch — instead of fetching a full page and discarding most results,
+    //  pre-generate random (page, index) pairs and fetch pageSize=1 per wildcard slot directly.
+    //  Requires knowing total count per platform (links to dynamic max page TODO above).
+    //  Would reduce data transfer from N_platforms*pageSize fetched to exactly limit*1 fetched.
+    private static final int MAX_PAGE = 500;
 
     private final GameServiceClient gameServiceClient;
     private final LibraryServiceClient libraryServiceClient;
@@ -29,41 +41,49 @@ public class WildCardService {
                 .map(UserGameDTO::getRawgGameId)
                 .collect(Collectors.toSet());
 
-        Set<String> userPlatforms = libraryServiceClient.getPlatforms(bearerToken).stream()
+        List<String> platformPool = libraryServiceClient.getPlatforms(bearerToken).stream()
                 .filter(p -> p.getPlatformName() != null)
                 .map(UserPlatformDTO::getPlatformName)
-                .collect(Collectors.toSet());
+                .collect(Collectors.toList());
 
+        /* TODO (post-MVP): Extend Game Service to accept multiple platforms in one request
+            so we can reduce this to 1 call regardless of how many platforms the user has.*/
+        ThreadLocalRandom rng = ThreadLocalRandom.current();
         List<GameDTO> candidates = new ArrayList<>();
-        if (userPlatforms.isEmpty()) {
-            candidates.addAll(gameServiceClient.getPopularGames(null));
+
+        if (platformPool.isEmpty()) {
+            candidates.addAll(gameServiceClient.getRandomGames(null, rng.nextInt(1, MAX_PAGE + 1)));
         } else {
-            for (String platform : userPlatforms) {
-                candidates.addAll(gameServiceClient.getPopularGames(platform));
+            for (String platform : platformPool) {
+                candidates.addAll(gameServiceClient.getRandomGames(platform, rng.nextInt(1, MAX_PAGE + 1)));
             }
         }
 
+        Collections.shuffle(candidates);
+
         Set<Integer> seen = new HashSet<>();
-        List<GameDTO> filtered = candidates.stream()
+        List<RecommendationDTO> results = candidates.stream()
                 .filter(g -> g != null && g.getRawgId() != null)
                 .filter(g -> seen.add(g.getRawgId()))
                 .filter(g -> !ownedGameIds.contains(g.getRawgId()))
+                .limit(limit)
+                .map(this::toDTO)
                 .collect(Collectors.toList());
 
-        Collections.shuffle(filtered);
+        log.info("WildCard: platforms={}, candidates={}, returned={}", platformPool, candidates.size(), results.size());
+        return results;
+    }
 
-        int safeLimit = Math.max(0, Math.min(limit, filtered.size()));
-        return filtered.subList(0, safeLimit).stream()
-                .map(g -> RecommendationDTO.builder()
-                        .rawgId(g.getRawgId())
-                        .name(g.getName())
-                        .rating(g.getRating())
-                        .backgroundImage(g.getBackgroundImage())
-                        .genres(g.getGenres())
-                        .platforms(g.getPlatforms())
-                        .reason("Wild Card - something different")
-                        .tier(null)
-                        .build())
-                .toList();
+    private RecommendationDTO toDTO(GameDTO game) {
+        return RecommendationDTO.builder()
+                .rawgId(game.getRawgId())
+                .name(game.getName())
+                .rating(game.getRating())
+                .backgroundImage(game.getBackgroundImage())
+                .genres(game.getGenres())
+                .platforms(game.getPlatforms())
+                .reason("Wild Card - something different")
+                .tier(null)
+                .build();
     }
 }
