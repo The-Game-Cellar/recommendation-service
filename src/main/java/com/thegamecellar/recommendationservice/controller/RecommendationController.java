@@ -1,7 +1,10 @@
 package com.thegamecellar.recommendationservice.controller;
 
+import com.thegamecellar.recommendationservice.model.dto.DashboardDTO;
 import com.thegamecellar.recommendationservice.model.dto.RecommendationDTO;
+import com.thegamecellar.recommendationservice.service.DashboardService;
 import com.thegamecellar.recommendationservice.service.RecommendationService;
+import com.thegamecellar.recommendationservice.service.SimilarGameService;
 import com.thegamecellar.recommendationservice.service.WildCardService;
 import com.thegamecellar.recommendationservice.util.JwtUtils;
 import lombok.RequiredArgsConstructor;
@@ -11,6 +14,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -25,6 +29,8 @@ public class RecommendationController {
 
     private final RecommendationService recommendationService;
     private final WildCardService wildCardService;
+    private final SimilarGameService similarGameService;
+    private final DashboardService dashboardService;
 
     @GetMapping("/personalized")
     public ResponseEntity<List<RecommendationDTO>> getPersonalized(
@@ -40,5 +46,29 @@ public class RecommendationController {
             @RequestParam(defaultValue = "10") @Min(1) @Max(50) int limit) {
         String token = JwtUtils.getBearerToken(authentication);
         return ResponseEntity.ok(wildCardService.getWildCard(token, limit));
+    }
+
+    @GetMapping("/similar/{gameId}")
+    public ResponseEntity<List<RecommendationDTO>> getSimilar(
+            @PathVariable @Min(1) Integer gameId,
+            Authentication authentication,
+            @RequestParam(defaultValue = "10") @Min(1) @Max(50) int limit) {
+        String token = JwtUtils.getBearerToken(authentication);
+        return ResponseEntity.ok(similarGameService.getSimilar(gameId, token, limit));
+    }
+
+    @GetMapping("/because-you-liked/{gameId}")
+    public ResponseEntity<List<RecommendationDTO>> getBecauseYouLiked(
+            @PathVariable @Min(1) Integer gameId,
+            Authentication authentication,
+            @RequestParam(defaultValue = "10") @Min(1) @Max(50) int limit) {
+        String token = JwtUtils.getBearerToken(authentication);
+        return ResponseEntity.ok(similarGameService.getBecauseYouLiked(gameId, token, limit));
+    }
+
+    @GetMapping("/dashboard")
+    public ResponseEntity<DashboardDTO> getDashboard(Authentication authentication) {
+        String token = JwtUtils.getBearerToken(authentication);
+        return ResponseEntity.ok(dashboardService.getDashboard(token));
     }
 }
