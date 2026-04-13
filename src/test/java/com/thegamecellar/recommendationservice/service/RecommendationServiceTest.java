@@ -18,6 +18,10 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -66,7 +70,7 @@ class RecommendationServiceTest {
         when(libraryServiceClient.getGames("token")).thenReturn(List.of(rated));
         when(libraryServiceClient.getPlatforms("token")).thenReturn(List.of(platform("PC")));
         when(gameServiceClient.getGameById(1)).thenReturn(gameWithGenres(1, "RPG"));
-        when(gameServiceClient.getPopularGames("PC")).thenReturn(List.of(game(2, "Popular RPG", "RPG")));
+        when(gameServiceClient.searchByGenre(eq("RPG"), isNull(), anyInt())).thenReturn(List.of(game(2, "Popular RPG", "RPG")));
 
         List<RecommendationDTO> result = recommendationService.getPersonalized("token", 10);
 
@@ -90,7 +94,7 @@ class RecommendationServiceTest {
         when(gameServiceClient.getGameById(3)).thenReturn(gameWithGenres(3, "RPG"));
         when(gameServiceClient.getGameById(4)).thenReturn(gameWithGenres(4, "RPG"));
         when(gameServiceClient.getGameById(5)).thenReturn(gameWithGenres(5, "RPG"));
-        when(gameServiceClient.searchByGenre("RPG", null)).thenReturn(List.of(game(6, "New RPG", "RPG")));
+        when(gameServiceClient.searchByGenre(eq("RPG"), isNull(), anyInt())).thenReturn(List.of(game(6, "New RPG", "RPG")));
 
         List<RecommendationDTO> result = recommendationService.getPersonalized("token", 10);
 

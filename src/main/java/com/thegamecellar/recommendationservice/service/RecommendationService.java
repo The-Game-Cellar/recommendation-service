@@ -21,6 +21,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -76,17 +77,23 @@ public class RecommendationService {
 
         Map<String, Double> genreProfile = UserProfileBuilder.build(ratedGames, gameDetails);
 
-        // Get top 3 genres to search by
-        List<String> topGenres = genreProfile.entrySet().stream()
+       /*  Cap at top 8 genres by weight to bound fanout.
+         TODO (post-MVP): Replace hard cap with weighted random genre sampling — higher-rated genres
+          should appear more often but all genres should have a chance to contribute, not just top N.
+
+          Consider pool-size target as a stopping condition instead of a fixed genre count. */
+        /* TODO (post-MVP): Extend Game Service to accept multiple genres in one request
+            so we can replace this loop with a single call. Requires collaboration with Game Service.*/
+        List<String> genresToSearch = genreProfile.entrySet().stream()
                 .sorted(Map.Entry.<String, Double>comparingByValue().reversed())
-                .limit(3)
+                .limit(8)
                 .map(Map.Entry::getKey)
                 .toList();
 
-        // Fetch candidate games for each top genre
         List<GameDTO> candidates = new ArrayList<>();
-        for (String genre : topGenres) {
-            candidates.addAll(gameServiceClient.searchByGenre(genre, null));
+        for (String genre : genresToSearch) {
+            int page = ThreadLocalRandom.current().nextInt(1, 21);
+            candidates.addAll(gameServiceClient.searchByGenre(genre, null, page));
         }
 
         // Deduplicate, filter by platform, exclude owned, score and sort
@@ -114,7 +121,7 @@ public class RecommendationService {
                                               Set<Integer> ownedGameIds,
                                               Set<String> userPlatforms,
                                               int limit) {
-        // Build a simple genre preference set from the few rated games
+        // Build genre set from the few rated games
         Set<String> preferredGenres = ratedGames.stream()
                 .map(UserGameDTO::getRawgGameId)
                 .map(id -> {
@@ -128,20 +135,35 @@ public class RecommendationService {
                 .flatMap(g -> g.getGenres().stream())
                 .collect(Collectors.toSet());
 
-        List<GameDTO> popular = new ArrayList<>();
-        for (String platform : userPlatforms) {
-            popular.addAll(gameServiceClient.getPopularGames(platform));
+        // Cap at top 5 genres — Tier-2 users have few ratings so genre set is naturally small,
+        // but we cap defensively to bound fanout.
+        // TODO (post-MVP): Replace hard cap with weighted random genre sampling.
+        // TODO (post-MVP): Extend Game Service to accept multiple genres in one request
+        //  so we can replace this loop with a single call. Requires collaboration with Game Service.
+        List<String> genresToSearch = preferredGenres.stream().limit(5).toList();
+
+        List<GameDTO> candidates = new ArrayList<>();
+        for (String genre : genresToSearch) {
+            int page = ThreadLocalRandom.current().nextInt(1, 21);
+            candidates.addAll(gameServiceClient.searchByGenre(genre, null, page));
         }
 
         Set<Integer> seen = new HashSet<>();
-        List<GameDTO> filtered = popular.stream()
+        List<GameDTO> filtered = candidates.stream()
                 .filter(g -> seen.add(g.getRawgId()))
                 .filter(g -> !ownedGameIds.contains(g.getRawgId()))
-                .filter(g -> preferredGenres.isEmpty() || matchesAnyGenre(g, preferredGenres))
-                .limit(limit)
-                .toList();
+                .filter(g -> matchesAnyPlatform(g, userPlatforms))
+                .collect(Collectors.toList());
 
-        return filtered.stream()
+        // Fallback: if genre search yields nothing (e.g. Game Service degraded), use popular games
+        if (filtered.isEmpty()) {
+            log.warn("Tier 2 genre search returned no candidates, falling back to popular games");
+            return getTier3(ownedGameIds, userPlatforms, limit);
+        }
+
+        Collections.shuffle(filtered);
+
+        return filtered.subList(0, Math.min(limit, filtered.size())).stream()
                 .map(g -> toDTO(g, "Popular in your genres", 2))
                 .toList();
     }
@@ -164,10 +186,11 @@ public class RecommendationService {
         List<GameDTO> filtered = popular.stream()
                 .filter(g -> seen.add(g.getRawgId()))
                 .filter(g -> !ownedGameIds.contains(g.getRawgId()))
-                .limit(limit)
-                .toList();
+                .collect(Collectors.toList());
 
-        return filtered.stream()
+        Collections.shuffle(filtered);
+
+        return filtered.subList(0, Math.min(limit, filtered.size())).stream()
                 .map(g -> toDTO(g, "Popular on your platforms", 3))
                 .toList();
     }
@@ -176,11 +199,6 @@ public class RecommendationService {
         if (userPlatforms.isEmpty()) return true;
         if (game.getPlatforms() == null) return false;
         return game.getPlatforms().stream().anyMatch(userPlatforms::contains);
-    }
-
-    private boolean matchesAnyGenre(GameDTO game, Set<String> genres) {
-        if (game.getGenres() == null) return false;
-        return game.getGenres().stream().anyMatch(genres::contains);
     }
 
     private RecommendationDTO toDTO(GameDTO game, String reason, int tier) {
