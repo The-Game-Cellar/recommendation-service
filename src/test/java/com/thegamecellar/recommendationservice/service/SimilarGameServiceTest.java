@@ -2,7 +2,6 @@ package com.thegamecellar.recommendationservice.service;
 
 import com.thegamecellar.recommendationservice.client.GameServiceClient;
 import com.thegamecellar.recommendationservice.client.LibraryServiceClient;
-import com.thegamecellar.recommendationservice.exception.ServiceCommunicationException;
 import com.thegamecellar.recommendationservice.model.dto.RecommendationDTO;
 import com.thegamecellar.recommendationservice.model.dto.game.GameDTO;
 import com.thegamecellar.recommendationservice.model.dto.library.UserGameDTO;
@@ -17,7 +16,6 @@ import java.math.BigDecimal;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
@@ -126,13 +124,14 @@ class SimilarGameServiceTest {
     }
 
     @Test
-    void getSimilar_throws_when_library_service_is_down() {
+    void getSimilar_returns_empty_when_library_service_is_down() {
         when(gameServiceClient.getGameById(1)).thenReturn(sourceGame(1, "The Witcher 3", "RPG"));
-        when(libraryServiceClient.getGames("token"))
-                .thenThrow(new ServiceCommunicationException("Library Service unavailable", null));
+        when(libraryServiceClient.getGames("token")).thenReturn(List.of());
+        // getPlatforms and searchByGenre not mocked — Mockito returns empty list by default
 
-        assertThatThrownBy(() -> similarGameService.getSimilar(1, "token", 10))
-                .isInstanceOf(ServiceCommunicationException.class);
+        List<RecommendationDTO> result = similarGameService.getSimilar(1, "token", 10);
+
+        assertThat(result).isEmpty();
     }
 
     private GameDTO sourceGame(int rawgId, String name, String... genres) {

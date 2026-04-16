@@ -100,6 +100,32 @@ class DashboardServiceTest {
     }
 
     @Test
+    void getDashboard_returns_partial_dashboard_when_personalized_fails() {
+        when(recommendationService.getPersonalized("token", 10))
+                .thenThrow(new ServiceCommunicationException("Game Service unavailable", null));
+        when(wildCardService.getWildCard("token", 5)).thenReturn(List.of(reco("Wild Game")));
+        when(libraryServiceClient.getGames("token")).thenReturn(List.of());
+
+        DashboardDTO result = dashboardService.getDashboard("token");
+
+        assertThat(result.getRecommendations()).isEmpty();
+        assertThat(result.getWildcard()).hasSize(1);
+    }
+
+    @Test
+    void getDashboard_returns_partial_dashboard_when_wildcard_fails() {
+        when(recommendationService.getPersonalized("token", 10)).thenReturn(List.of(reco("Game A")));
+        when(wildCardService.getWildCard("token", 5))
+                .thenThrow(new ServiceCommunicationException("Game Service unavailable", null));
+        when(libraryServiceClient.getGames("token")).thenReturn(List.of());
+
+        DashboardDTO result = dashboardService.getDashboard("token");
+
+        assertThat(result.getRecommendations()).hasSize(1);
+        assertThat(result.getWildcard()).isEmpty();
+    }
+
+    @Test
     void getDashboard_excludes_seeds_with_null_rawg_id() {
         when(recommendationService.getPersonalized("token", 10)).thenReturn(List.of());
         when(wildCardService.getWildCard("token", 5)).thenReturn(List.of());

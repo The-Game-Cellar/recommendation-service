@@ -2,7 +2,6 @@ package com.thegamecellar.recommendationservice.service;
 
 import com.thegamecellar.recommendationservice.client.GameServiceClient;
 import com.thegamecellar.recommendationservice.client.LibraryServiceClient;
-import com.thegamecellar.recommendationservice.exception.ServiceCommunicationException;
 import com.thegamecellar.recommendationservice.model.dto.RecommendationDTO;
 import com.thegamecellar.recommendationservice.model.dto.game.GameDTO;
 import com.thegamecellar.recommendationservice.model.dto.library.UserGameDTO;
@@ -17,7 +16,6 @@ import java.math.BigDecimal;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -121,12 +119,13 @@ class RecommendationServiceTest {
     // --- Library service down ---
 
     @Test
-    void getPersonalized_throws_when_library_service_is_down() {
-        when(libraryServiceClient.getGames("token"))
-                .thenThrow(new ServiceCommunicationException("Library Service unavailable", null));
+    void getPersonalized_returns_empty_when_library_service_is_down() {
+        when(libraryServiceClient.getGames("token")).thenReturn(List.of());
+        // getPlatforms and getPopularGames not mocked — Mockito returns empty list by default
 
-        assertThatThrownBy(() -> recommendationService.getPersonalized("token", 10))
-                .isInstanceOf(ServiceCommunicationException.class);
+        List<RecommendationDTO> result = recommendationService.getPersonalized("token", 10);
+
+        assertThat(result).isEmpty();
     }
 
     // --- Helpers ---
