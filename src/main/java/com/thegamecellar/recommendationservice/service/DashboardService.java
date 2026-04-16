@@ -23,8 +23,22 @@ public class DashboardService {
     private final LibraryServiceClient libraryServiceClient;
 
     public DashboardDTO getDashboard(String bearerToken) {
-        List<RecommendationDTO> recommendations = recommendationService.getPersonalized(bearerToken, 10);
-        List<RecommendationDTO> wildcard = wildCardService.getWildCard(bearerToken, 5);
+        List<RecommendationDTO> recommendations;
+        try {
+            recommendations = recommendationService.getPersonalized(bearerToken, 10);
+        } catch (Exception ex) {
+            log.warn("Personalized recommendations failed, returning empty: {}", ex.getMessage());
+            recommendations = Collections.emptyList();
+        }
+
+        List<RecommendationDTO> wildcard;
+        try {
+            wildcard = wildCardService.getWildCard(bearerToken, 5);
+        } catch (Exception ex) {
+            log.warn("WildCard failed, returning empty: {}", ex.getMessage());
+            wildcard = Collections.emptyList();
+        }
+
         List<BecauseYouLikedDTO> becauseYouLiked = getBecauseYouLiked(bearerToken);
 
         return DashboardDTO.builder()

@@ -1,6 +1,5 @@
 package com.thegamecellar.recommendationservice.client;
 
-import com.thegamecellar.recommendationservice.exception.ServiceCommunicationException;
 import com.thegamecellar.recommendationservice.model.dto.library.UserGameDTO;
 import com.thegamecellar.recommendationservice.model.dto.library.UserPlatformDTO;
 import lombok.RequiredArgsConstructor;
@@ -41,8 +40,8 @@ public class LibraryServiceClient {
             }
             return Arrays.asList(response.getBody());
         } catch (RestClientException ex) {
-            log.warn("Failed to fetch games from Library Service: {}", ex.getMessage());
-            throw new ServiceCommunicationException("Library Service unavailable", ex);
+            log.warn("Library Service unavailable (games): {} — returning empty list", ex.getMessage());
+            return Collections.emptyList();
         }
     }
 
@@ -59,8 +58,8 @@ public class LibraryServiceClient {
             }
             return Arrays.asList(response.getBody());
         } catch (RestClientException ex) {
-            log.warn("Failed to fetch platforms from Library Service: {}", ex.getMessage());
-            throw new ServiceCommunicationException("Library Service unavailable", ex);
+            log.warn("Library Service unavailable (platforms): {} — returning empty list", ex.getMessage());
+            return Collections.emptyList();
         }
     }
 
