@@ -82,21 +82,19 @@ class DashboardServiceTest {
 
     @Test
     void getDashboard_skips_failed_seed_instead_of_crashing() {
+        // Only 1 seed is picked (limit 1 after shuffle). If that seed's similar-game call
+        // throws, becauseYouLiked must be empty — not an exception.
         when(recommendationService.getPersonalized("token", 10)).thenReturn(List.of());
         when(wildCardService.getWildCard("token", 5)).thenReturn(List.of());
         when(libraryServiceClient.getGames("token")).thenReturn(List.of(
-                highRatedGame(1, "Witcher 3", 9),
-                highRatedGame(2, "Elden Ring", 10)
+                highRatedGame(1, "Witcher 3", 9)
         ));
         when(similarGameService.getBecauseYouLiked(eq(1), anyString(), anyInt()))
                 .thenThrow(new ServiceCommunicationException("Game Service unavailable", null));
-        when(similarGameService.getBecauseYouLiked(eq(2), anyString(), anyInt()))
-                .thenReturn(List.of(reco("Dark Souls")));
 
         DashboardDTO result = dashboardService.getDashboard("token");
 
-        assertThat(result.getBecauseYouLiked()).hasSize(1);
-        assertThat(result.getBecauseYouLiked().get(0).getBasedOnGame()).isEqualTo("Elden Ring");
+        assertThat(result.getBecauseYouLiked()).isEmpty();
     }
 
     @Test

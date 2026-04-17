@@ -51,11 +51,13 @@ public class DashboardService {
     private List<BecauseYouLikedDTO> getBecauseYouLiked(String bearerToken) {
         List<UserGameDTO> games = libraryServiceClient.getGames(bearerToken);
 
-        // Pick up to 3 highly-rated games to base the "because you liked" section on
-        List<UserGameDTO> seeds = games.stream()
+        // Shuffle eligible games so the seed rotates across requests rather than always being the
+        // same highest-rated game (insertion-order bias).  Pick 1 seed for the dashboard.
+        List<UserGameDTO> eligible = games.stream()
                 .filter(g -> g.getRating() != null && g.getRating() >= 8 && g.getRawgGameId() != null)
-                .limit(3)
-                .toList();
+                .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
+        Collections.shuffle(eligible);
+        List<UserGameDTO> seeds = eligible.stream().limit(1).toList();
 
         if (seeds.isEmpty()) {
             return Collections.emptyList();
