@@ -76,6 +76,7 @@ public class RecommendationService {
         gameDetails.values().removeIf(v -> v == null);
 
         Map<String, Double> genreProfile = UserProfileBuilder.build(ratedGames, gameDetails);
+        log.info("Tier 1 genre profile: {}", genreProfile);
 
        /*  Cap at top 8 genres by weight to bound fanout.
          TODO (post-MVP): Replace hard cap with weighted random genre sampling — higher-rated genres
@@ -89,11 +90,14 @@ public class RecommendationService {
                 .limit(8)
                 .map(Map.Entry::getKey)
                 .toList();
+        log.info("Tier 1 searching genres: {}", genresToSearch);
 
         List<GameDTO> candidates = new ArrayList<>();
         for (String genre : genresToSearch) {
             int page = ThreadLocalRandom.current().nextInt(1, 21);
-            candidates.addAll(gameServiceClient.searchByGenre(genre, null, page));
+            List<GameDTO> results = gameServiceClient.searchByGenre(genre, null, page);
+            log.info("Genre '{}' returned {} candidates", genre, results.size());
+            candidates.addAll(results);
         }
 
         // Deduplicate, filter by platform, exclude owned, score and sort
@@ -103,6 +107,13 @@ public class RecommendationService {
                 .filter(g -> !ownedGameIds.contains(g.getRawgId()))
                 .filter(g -> matchesAnyPlatform(g, userPlatforms))
                 .toList();
+
+        // Fallback: if all genre searches returned nothing (cache sparse + RAWG degraded),
+        // serve popular games so the dashboard is never empty.
+        if (filtered.isEmpty()) {
+            log.warn("Tier 1 genre search returned no candidates, falling back to popular games");
+            return getTier3(ownedGameIds, userPlatforms, limit);
+        }
 
         List<GameDTO> scored = filtered.stream()
                 .sorted(Comparator.comparingDouble(g -> -SimilarityScorer.score(g, genreProfile)))

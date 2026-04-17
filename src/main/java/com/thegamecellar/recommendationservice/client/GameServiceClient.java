@@ -78,22 +78,19 @@ public class GameServiceClient {
         }
     }
 
-    public List<GameDTO> getRandomGames(String platform, int page) {
+    public List<GameDTO> getRandomFromCache(int limit) {
         try {
-            UriComponentsBuilder builder = UriComponentsBuilder
-                    .fromUriString(gameServiceUrl + "/api/v1/games/search")
-                    .queryParam("pageSize", 20)
-                    .queryParam("page", page);
-            if (platform != null && !platform.isBlank()) {
-                builder.queryParam("platform", platform);
-            }
-            GameSearchDTO response = restTemplate.getForObject(builder.toUriString(), GameSearchDTO.class);
+            String url = UriComponentsBuilder
+                    .fromUriString(gameServiceUrl + "/api/v1/games/random")
+                    .queryParam("limit", limit)
+                    .toUriString();
+            GameSearchDTO response = restTemplate.getForObject(url, GameSearchDTO.class);
             if (response == null || response.getGames() == null) {
                 return Collections.emptyList();
             }
             return response.getGames();
         } catch (RestClientException ex) {
-            log.warn("Failed to fetch random games (platform={}, page={}) from Game Service: {}", platform, page, ex.getMessage());
+            log.warn("Failed to fetch random games from cache: {}", ex.getMessage());
             return Collections.emptyList();
         }
     }
