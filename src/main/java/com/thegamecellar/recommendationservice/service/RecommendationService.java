@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -60,20 +61,20 @@ public class RecommendationService {
                                               Set<Integer> ownedGameIds,
                                               Set<String> userPlatforms,
                                               int limit) {
-        // Fetch game details for rated games to build genre profile
-        Map<Integer, GameDTO> gameDetails = ratedGames.stream()
-                .collect(Collectors.toMap(
-                        UserGameDTO::getRawgGameId,
-                        g -> {
-                            try {
-                                return gameServiceClient.getGameById(g.getRawgGameId());
-                            } catch (Exception ex) {
-                                log.warn("Could not fetch details for game {}", g.getRawgGameId());
-                                return null;
-                            }
-                        }
-                ));
-        gameDetails.values().removeIf(v -> v == null);
+        // Fetch game details for rated games to build genre profile.
+        // Uses explicit loop instead of Collectors.toMap — toMap rejects null values and throws NPE
+        // when a fetch fails, which would crash Tier 1 before the Tier 3 fallback is reached.
+        Map<Integer, GameDTO> gameDetails = new HashMap<>();
+        for (UserGameDTO g : ratedGames) {
+            try {
+                GameDTO dto = gameServiceClient.getGameById(g.getRawgGameId());
+                if (dto != null) {
+                    gameDetails.put(g.getRawgGameId(), dto);
+                }
+            } catch (Exception ex) {
+                log.warn("Could not fetch details for game {}, skipping", g.getRawgGameId());
+            }
+        }
 
         Map<String, Double> genreProfile = UserProfileBuilder.build(ratedGames, gameDetails);
         log.info("Tier 1 genre profile: {}", genreProfile);
