@@ -38,7 +38,7 @@ public class RecommendationController {
     @GetMapping("/personalized")
     public ResponseEntity<List<RecommendationDTO>> getPersonalized(
             Authentication authentication,
-            @RequestParam(defaultValue = "10") @Min(1) @Max(50) int limit) {
+            @RequestParam(defaultValue = "10") @Min(1) @Max(100) int limit) {
         String token = JwtUtils.getBearerToken(authentication);
         return ResponseEntity.ok(recommendationService.getPersonalized(token, limit));
     }

@@ -62,7 +62,7 @@ public class SimilarGameService {
         List<GameDTO> candidates = new ArrayList<>();
         for (String genre : genres) {
             if (genre != null && !genre.isBlank()) {
-                int page = ThreadLocalRandom.current().nextInt(1, 21);
+                int page = ThreadLocalRandom.current().nextInt(0, 20);
                 candidates.addAll(gameServiceClient.searchByGenre(genre, null, page));
             }
         }
