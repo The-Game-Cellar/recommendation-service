@@ -95,7 +95,7 @@ public class RecommendationService {
 
         List<GameDTO> candidates = new ArrayList<>();
         for (String genre : genresToSearch) {
-            int page = ThreadLocalRandom.current().nextInt(1, 21);
+            int page = ThreadLocalRandom.current().nextInt(0, 20);
             List<GameDTO> results = gameServiceClient.searchByGenre(genre, null, page);
             log.info("Genre '{}' returned {} candidates", genre, results.size());
             candidates.addAll(results);
@@ -120,8 +120,7 @@ public class RecommendationService {
                 .sorted(Comparator.comparingDouble(g -> -SimilarityScorer.score(g, genreProfile)))
                 .toList();
 
-        // Shuffle top 20 for variety
-        List<GameDTO> pool = new ArrayList<>(scored.subList(0, Math.min(20, scored.size())));
+        List<GameDTO> pool = new ArrayList<>(scored.subList(0, Math.min(100, scored.size())));
         Collections.shuffle(pool);
 
         return pool.subList(0, Math.min(limit, pool.size())).stream()
@@ -156,7 +155,7 @@ public class RecommendationService {
 
         List<GameDTO> candidates = new ArrayList<>();
         for (String genre : genresToSearch) {
-            int page = ThreadLocalRandom.current().nextInt(1, 21);
+            int page = ThreadLocalRandom.current().nextInt(0, 20);
             candidates.addAll(gameServiceClient.searchByGenre(genre, null, page));
         }
 
