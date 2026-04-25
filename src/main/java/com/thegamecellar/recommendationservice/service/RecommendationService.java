@@ -40,7 +40,7 @@ public class RecommendationService {
                 .toList();
 
         Set<Integer> ownedGameIds = allGames.stream()
-                .map(UserGameDTO::getRawgGameId)
+                .map(UserGameDTO::getIgdbGameId)
                 .collect(Collectors.toSet());
 
         Set<String> userPlatforms = libraryServiceClient.getPlatforms(bearerToken).stream()
@@ -48,7 +48,6 @@ public class RecommendationService {
                 .collect(Collectors.toSet());
 
         RecommendationTier tier = TierSelector.select(ratedGames.size());
-        log.info("Selected tier {} for user with {} rated games", tier, ratedGames.size());
 
         return switch (tier) {
             case ONE -> getTier1(ratedGames, ownedGameIds, userPlatforms, limit);
@@ -67,17 +66,16 @@ public class RecommendationService {
         Map<Integer, GameDTO> gameDetails = new HashMap<>();
         for (UserGameDTO g : ratedGames) {
             try {
-                GameDTO dto = gameServiceClient.getGameById(g.getRawgGameId());
+                GameDTO dto = gameServiceClient.getGameById(g.getIgdbGameId());
                 if (dto != null) {
-                    gameDetails.put(g.getRawgGameId(), dto);
+                    gameDetails.put(g.getIgdbGameId(), dto);
                 }
             } catch (Exception ex) {
-                log.warn("Could not fetch details for game {}, skipping", g.getRawgGameId());
+                log.warn("Could not fetch details for game {}, skipping", g.getIgdbGameId());
             }
         }
 
         Map<String, Double> genreProfile = UserProfileBuilder.build(ratedGames, gameDetails);
-        log.info("Tier 1 genre profile: {}", genreProfile);
 
        /*  Cap at top 8 genres by weight to bound fanout.
          TODO (post-MVP): Replace hard cap with weighted random genre sampling — higher-rated genres
@@ -91,25 +89,22 @@ public class RecommendationService {
                 .limit(8)
                 .map(Map.Entry::getKey)
                 .toList();
-        log.info("Tier 1 searching genres: {}", genresToSearch);
-
         List<GameDTO> candidates = new ArrayList<>();
         for (String genre : genresToSearch) {
             int page = ThreadLocalRandom.current().nextInt(0, 20);
             List<GameDTO> results = gameServiceClient.searchByGenre(genre, null, page);
-            log.info("Genre '{}' returned {} candidates", genre, results.size());
             candidates.addAll(results);
         }
 
         // Deduplicate, filter by platform, exclude owned, score and sort
         Set<Integer> seen = new HashSet<>();
         List<GameDTO> filtered = candidates.stream()
-                .filter(g -> seen.add(g.getRawgId()))
-                .filter(g -> !ownedGameIds.contains(g.getRawgId()))
+                .filter(g -> seen.add(g.getIgdbId()))
+                .filter(g -> !ownedGameIds.contains(g.getIgdbId()))
                 .filter(g -> matchesAnyPlatform(g, userPlatforms))
                 .toList();
 
-        // Fallback: if all genre searches returned nothing (cache sparse + RAWG degraded),
+        // Fallback: if all genre searches returned nothing (cache sparse),
         // serve popular games so the dashboard is never empty.
         if (filtered.isEmpty()) {
             log.warn("Tier 1 genre search returned no candidates, falling back to popular games");
@@ -134,7 +129,7 @@ public class RecommendationService {
                                               int limit) {
         // Build genre set from the few rated games
         Set<String> preferredGenres = ratedGames.stream()
-                .map(UserGameDTO::getRawgGameId)
+                .map(UserGameDTO::getIgdbGameId)
                 .map(id -> {
                     try {
                         return gameServiceClient.getGameById(id);
@@ -161,8 +156,8 @@ public class RecommendationService {
 
         Set<Integer> seen = new HashSet<>();
         List<GameDTO> filtered = candidates.stream()
-                .filter(g -> seen.add(g.getRawgId()))
-                .filter(g -> !ownedGameIds.contains(g.getRawgId()))
+                .filter(g -> seen.add(g.getIgdbId()))
+                .filter(g -> !ownedGameIds.contains(g.getIgdbId()))
                 .filter(g -> matchesAnyPlatform(g, userPlatforms))
                 .collect(Collectors.toList());
 
@@ -195,8 +190,8 @@ public class RecommendationService {
 
         Set<Integer> seen = new HashSet<>();
         List<GameDTO> filtered = popular.stream()
-                .filter(g -> seen.add(g.getRawgId()))
-                .filter(g -> !ownedGameIds.contains(g.getRawgId()))
+                .filter(g -> seen.add(g.getIgdbId()))
+                .filter(g -> !ownedGameIds.contains(g.getIgdbId()))
                 .collect(Collectors.toList());
 
         Collections.shuffle(filtered);
@@ -214,7 +209,7 @@ public class RecommendationService {
 
     private RecommendationDTO toDTO(GameDTO game, String reason, int tier) {
         return RecommendationDTO.builder()
-                .rawgId(game.getRawgId())
+                .igdbId(game.getIgdbId())
                 .name(game.getName())
                 .rating(game.getRating())
                 .backgroundImage(game.getBackgroundImage())

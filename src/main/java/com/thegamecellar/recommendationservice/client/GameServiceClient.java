@@ -24,15 +24,15 @@ public class GameServiceClient {
     @Value("${services.game-service.url}")
     private String gameServiceUrl;
 
-    public GameDTO getGameById(Integer rawgId) {
+    public GameDTO getGameById(Integer igdbId) {
         try {
             return restTemplate.getForObject(
-                    gameServiceUrl + "/api/v1/games/{rawgId}",
+                    gameServiceUrl + "/api/v1/games/{igdbId}",
                     GameDTO.class,
-                    rawgId
+                    igdbId
             );
         } catch (RestClientException ex) {
-            log.warn("Failed to fetch game {} from Game Service: {}", rawgId, ex.getMessage());
+            log.warn("Failed to fetch game {} from Game Service: {}", igdbId, ex.getMessage());
             throw new ServiceCommunicationException("Game Service unavailable", ex);
         }
     }

@@ -54,7 +54,7 @@ public class DashboardService {
         // Shuffle eligible games so the seed rotates across requests rather than always being the
         // same highest-rated game (insertion-order bias).  Pick 1 seed for the dashboard.
         List<UserGameDTO> eligible = games.stream()
-                .filter(g -> g.getRating() != null && g.getRating() >= 8 && g.getRawgGameId() != null)
+                .filter(g -> g.getRating() != null && g.getRating() >= 8 && g.getIgdbGameId() != null)
                 .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
         Collections.shuffle(eligible);
         List<UserGameDTO> seeds = eligible.stream().limit(1).toList();
@@ -67,14 +67,14 @@ public class DashboardService {
                 .map(seed -> {
                     try {
                         List<RecommendationDTO> recos = similarGameService.getBecauseYouLiked(
-                                seed.getRawgGameId(), bearerToken, 5);
+                                seed.getIgdbGameId(), bearerToken, 5);
                         return BecauseYouLikedDTO.builder()
-                                .basedOnRawgId(seed.getRawgGameId())
+                                .basedOnIgdbId(seed.getIgdbGameId())
                                 .basedOnGame(seed.getGameName())
                                 .recommendations(recos)
                                 .build();
                     } catch (Exception ex) {
-                        log.warn("Failed to fetch because-you-liked for game {}, skipping seed", seed.getRawgGameId());
+                        log.warn("Failed to fetch because-you-liked for game {}, skipping seed", seed.getIgdbGameId());
                         return null;
                     }
                 })

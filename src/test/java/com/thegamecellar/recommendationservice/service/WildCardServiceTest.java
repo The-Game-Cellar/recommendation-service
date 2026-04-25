@@ -85,7 +85,7 @@ class WildCardServiceTest {
 
     private GameDTO game(int rawgId, String name) {
         GameDTO game = new GameDTO();
-        game.setRawgId(rawgId);
+        game.setIgdbId(rawgId);
         game.setName(name);
         game.setRating(BigDecimal.valueOf(4.0));
         game.setPlatforms(List.of("PC"));
@@ -94,7 +94,7 @@ class WildCardServiceTest {
 
     private UserGameDTO ownedGame(int rawgId) {
         UserGameDTO game = new UserGameDTO();
-        game.setRawgGameId(rawgId);
+        game.setIgdbGameId(rawgId);
         return game;
     }
 }

@@ -112,8 +112,8 @@ class RecommendationServiceTest {
 
         List<RecommendationDTO> result = recommendationService.getPersonalized("token", 10);
 
-        assertThat(result).noneMatch(r -> r.getRawgId() == 1);
-        assertThat(result).anyMatch(r -> r.getRawgId() == 2);
+        assertThat(result).noneMatch(r -> r.getIgdbId() == 1);
+        assertThat(result).anyMatch(r -> r.getIgdbId() == 2);
     }
 
     // --- Library service down ---
@@ -132,14 +132,14 @@ class RecommendationServiceTest {
 
     private UserGameDTO ratedGame(int rawgId, int rating) {
         UserGameDTO game = new UserGameDTO();
-        game.setRawgGameId(rawgId);
+        game.setIgdbGameId(rawgId);
         game.setRating(rating);
         return game;
     }
 
     private UserGameDTO ownedGame(int rawgId) {
         UserGameDTO game = new UserGameDTO();
-        game.setRawgGameId(rawgId);
+        game.setIgdbGameId(rawgId);
         return game;
     }
 
@@ -151,7 +151,7 @@ class RecommendationServiceTest {
 
     private GameDTO game(int rawgId, String name, String... genres) {
         GameDTO game = new GameDTO();
-        game.setRawgId(rawgId);
+        game.setIgdbId(rawgId);
         game.setName(name);
         game.setRating(BigDecimal.valueOf(4.0));
         game.setPlatforms(List.of("PC"));
@@ -163,7 +163,7 @@ class RecommendationServiceTest {
 
     private GameDTO gameWithGenres(int rawgId, String... genres) {
         GameDTO game = new GameDTO();
-        game.setRawgId(rawgId);
+        game.setIgdbId(rawgId);
         game.setGenres(List.of(genres));
         return game;
     }

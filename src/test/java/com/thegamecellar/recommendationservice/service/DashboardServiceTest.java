@@ -124,12 +124,12 @@ class DashboardServiceTest {
     }
 
     @Test
-    void getDashboard_excludes_seeds_with_null_rawg_id() {
+    void getDashboard_excludes_seeds_with_null_igdb_id() {
         when(recommendationService.getPersonalized("token", 10)).thenReturn(List.of());
         when(wildCardService.getWildCard("token", 5)).thenReturn(List.of());
 
         UserGameDTO gameWithNullId = new UserGameDTO();
-        gameWithNullId.setRawgGameId(null);
+        gameWithNullId.setIgdbGameId(null);
         gameWithNullId.setRating(9);
         gameWithNullId.setGameName("Broken Game");
 
@@ -142,7 +142,7 @@ class DashboardServiceTest {
 
     private RecommendationDTO reco(String name) {
         return RecommendationDTO.builder()
-                .rawgId(1)
+                .igdbId(1)
                 .name(name)
                 .rating(BigDecimal.valueOf(4.0))
                 .build();
@@ -150,7 +150,7 @@ class DashboardServiceTest {
 
     private UserGameDTO highRatedGame(int rawgId, String name, int rating) {
         UserGameDTO game = new UserGameDTO();
-        game.setRawgGameId(rawgId);
+        game.setIgdbGameId(rawgId);
         game.setGameName(name);
         game.setRating(rating);
         return game;
@@ -158,7 +158,7 @@ class DashboardServiceTest {
 
     private UserGameDTO lowRatedGame(int rawgId, int rating) {
         UserGameDTO game = new UserGameDTO();
-        game.setRawgGameId(rawgId);
+        game.setIgdbGameId(rawgId);
         game.setRating(rating);
         return game;
     }
