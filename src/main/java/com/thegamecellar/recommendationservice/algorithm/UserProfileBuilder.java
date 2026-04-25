@@ -16,7 +16,7 @@ public class UserProfileBuilder {
         Map<String, List<Integer>> genreRatings = new HashMap<>();
 
         for (UserGameDTO ratedGame : ratedGames) {
-            GameDTO details = gameDetails.get(ratedGame.getRawgGameId());
+            GameDTO details = gameDetails.get(ratedGame.getIgdbGameId());
             if (details == null || details.getGenres() == null) {
                 continue;
             }

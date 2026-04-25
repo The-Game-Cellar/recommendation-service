@@ -8,7 +8,7 @@ import java.util.List;
 @Data
 @Builder
 public class BecauseYouLikedDTO {
-    private Integer basedOnRawgId;
+    private Integer basedOnIgdbId;
     private String basedOnGame;
     private List<RecommendationDTO> recommendations;
 }

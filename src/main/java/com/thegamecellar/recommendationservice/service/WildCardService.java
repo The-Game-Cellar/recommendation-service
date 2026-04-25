@@ -24,28 +24,27 @@ public class WildCardService {
 
     public List<RecommendationDTO> getWildCard(String bearerToken, int limit) {
         Set<Integer> ownedGameIds = libraryServiceClient.getGames(bearerToken).stream()
-                .filter(g -> g.getRawgGameId() != null)
-                .map(UserGameDTO::getRawgGameId)
+                .filter(g -> g.getIgdbGameId() != null)
+                .map(UserGameDTO::getIgdbGameId)
                 .collect(Collectors.toSet());
 
         List<GameDTO> candidates = gameServiceClient.getRandomFromCache(limit * 3);
 
         Set<Integer> seen = new HashSet<>();
         List<RecommendationDTO> results = candidates.stream()
-                .filter(g -> g != null && g.getRawgId() != null)
-                .filter(g -> seen.add(g.getRawgId()))
-                .filter(g -> !ownedGameIds.contains(g.getRawgId()))
+                .filter(g -> g != null && g.getIgdbId() != null)
+                .filter(g -> seen.add(g.getIgdbId()))
+                .filter(g -> !ownedGameIds.contains(g.getIgdbId()))
                 .limit(limit)
                 .map(this::toDTO)
                 .collect(Collectors.toList());
 
-        log.info("WildCard: candidates={}, owned={}, returned={}", candidates.size(), ownedGameIds.size(), results.size());
         return results;
     }
 
     private RecommendationDTO toDTO(GameDTO game) {
         return RecommendationDTO.builder()
-                .rawgId(game.getRawgId())
+                .igdbId(game.getIgdbId())
                 .name(game.getName())
                 .rating(game.getRating())
                 .backgroundImage(game.getBackgroundImage())

@@ -68,14 +68,14 @@ class UserProfileBuilderTest {
 
     private UserGameDTO ratedGame(int rawgId, int rating) {
         UserGameDTO game = new UserGameDTO();
-        game.setRawgGameId(rawgId);
+        game.setIgdbGameId(rawgId);
         game.setRating(rating);
         return game;
     }
 
     private GameDTO gameWithGenres(int rawgId, String... genres) {
         GameDTO game = new GameDTO();
-        game.setRawgId(rawgId);
+        game.setIgdbId(rawgId);
         game.setGenres(List.of(genres));
         return game;
     }

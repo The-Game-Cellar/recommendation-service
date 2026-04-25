@@ -9,7 +9,7 @@ import java.util.List;
 @Data
 @Builder
 public class RecommendationDTO {
-    private Integer rawgId;
+    private Integer igdbId;
     private String name;
     private BigDecimal rating;
     private String backgroundImage;

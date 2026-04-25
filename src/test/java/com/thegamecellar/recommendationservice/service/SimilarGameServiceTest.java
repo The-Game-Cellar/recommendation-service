@@ -45,7 +45,7 @@ class SimilarGameServiceTest {
     @Test
     void getSimilar_returns_empty_when_source_game_has_no_genres() {
         GameDTO sourceGame = new GameDTO();
-        sourceGame.setRawgId(1);
+        sourceGame.setIgdbId(1);
         sourceGame.setGenres(List.of());
         when(gameServiceClient.getGameById(1)).thenReturn(sourceGame);
 
@@ -65,7 +65,7 @@ class SimilarGameServiceTest {
 
         List<RecommendationDTO> result = similarGameService.getSimilar(1, "token", 10);
 
-        assertThat(result).noneMatch(r -> r.getRawgId() == 1);
+        assertThat(result).noneMatch(r -> r.getIgdbId() == 1);
     }
 
     @Test
@@ -79,8 +79,8 @@ class SimilarGameServiceTest {
 
         List<RecommendationDTO> result = similarGameService.getSimilar(1, "token", 10);
 
-        assertThat(result).noneMatch(r -> r.getRawgId() == 2);
-        assertThat(result).anyMatch(r -> r.getRawgId() == 3);
+        assertThat(result).noneMatch(r -> r.getIgdbId() == 2);
+        assertThat(result).anyMatch(r -> r.getIgdbId() == 3);
     }
 
     @Test
@@ -95,8 +95,8 @@ class SimilarGameServiceTest {
 
         List<RecommendationDTO> result = similarGameService.getSimilar(1, "token", 10);
 
-        assertThat(result).anyMatch(r -> r.getRawgId() == 2);
-        assertThat(result).noneMatch(r -> r.getRawgId() == 3);
+        assertThat(result).anyMatch(r -> r.getIgdbId() == 2);
+        assertThat(result).noneMatch(r -> r.getIgdbId() == 3);
     }
 
     @Test
@@ -136,7 +136,7 @@ class SimilarGameServiceTest {
 
     private GameDTO sourceGame(int rawgId, String name, String... genres) {
         GameDTO game = new GameDTO();
-        game.setRawgId(rawgId);
+        game.setIgdbId(rawgId);
         game.setName(name);
         game.setGenres(List.of(genres));
         return game;
@@ -144,7 +144,7 @@ class SimilarGameServiceTest {
 
     private GameDTO game(int rawgId, String name, String... genres) {
         GameDTO game = new GameDTO();
-        game.setRawgId(rawgId);
+        game.setIgdbId(rawgId);
         game.setName(name);
         game.setRating(BigDecimal.valueOf(4.0));
         game.setGenres(List.of(genres));
@@ -159,7 +159,7 @@ class SimilarGameServiceTest {
 
     private UserGameDTO ownedGame(int rawgId) {
         UserGameDTO game = new UserGameDTO();
-        game.setRawgGameId(rawgId);
+        game.setIgdbGameId(rawgId);
         return game;
     }
 

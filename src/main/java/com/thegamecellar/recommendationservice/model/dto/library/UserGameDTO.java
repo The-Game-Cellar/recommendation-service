@@ -9,7 +9,7 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 public class UserGameDTO {
     private Long id;
-    private Integer rawgGameId;
+    private Integer igdbGameId;
     private String gameName;
     private String status;
     private Integer rating;
