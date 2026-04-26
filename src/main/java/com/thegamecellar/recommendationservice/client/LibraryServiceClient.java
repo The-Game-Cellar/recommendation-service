@@ -1,5 +1,6 @@
 package com.thegamecellar.recommendationservice.client;
 
+import com.thegamecellar.recommendationservice.exception.ServiceCommunicationException;
 import com.thegamecellar.recommendationservice.model.dto.library.UserGameDTO;
 import com.thegamecellar.recommendationservice.model.dto.library.UserPlatformDTO;
 import lombok.RequiredArgsConstructor;
@@ -10,6 +11,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
@@ -39,6 +41,13 @@ public class LibraryServiceClient {
                 return Collections.emptyList();
             }
             return Arrays.asList(response.getBody());
+        } catch (HttpClientErrorException ex) {
+            if (ex.getStatusCode().value() == 401 || ex.getStatusCode().value() == 403) {
+                log.error("Library Service auth error (games): {} — JWT not forwarded correctly", ex.getStatusCode());
+                throw new ServiceCommunicationException("Library Service auth error: " + ex.getStatusCode(), ex);
+            }
+            log.warn("Library Service error (games): {} — returning empty list", ex.getMessage());
+            return Collections.emptyList();
         } catch (RestClientException ex) {
             log.warn("Library Service unavailable (games): {} — returning empty list", ex.getMessage());
             return Collections.emptyList();
@@ -57,6 +66,13 @@ public class LibraryServiceClient {
                 return Collections.emptyList();
             }
             return Arrays.asList(response.getBody());
+        } catch (HttpClientErrorException ex) {
+            if (ex.getStatusCode().value() == 401 || ex.getStatusCode().value() == 403) {
+                log.error("Library Service auth error (platforms): {} — JWT not forwarded correctly", ex.getStatusCode());
+                throw new ServiceCommunicationException("Library Service auth error: " + ex.getStatusCode(), ex);
+            }
+            log.warn("Library Service error (platforms): {} — returning empty list", ex.getMessage());
+            return Collections.emptyList();
         } catch (RestClientException ex) {
             log.warn("Library Service unavailable (platforms): {} — returning empty list", ex.getMessage());
             return Collections.emptyList();

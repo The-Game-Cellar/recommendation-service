@@ -28,7 +28,7 @@ public class WildCardService {
                 .map(UserGameDTO::getIgdbGameId)
                 .collect(Collectors.toSet());
 
-        List<GameDTO> candidates = gameServiceClient.getRandomFromCache(limit * 3);
+        List<GameDTO> candidates = gameServiceClient.getRandomFromCache(limit * 3, bearerToken);
 
         Set<Integer> seen = new HashSet<>();
         List<RecommendationDTO> results = candidates.stream()

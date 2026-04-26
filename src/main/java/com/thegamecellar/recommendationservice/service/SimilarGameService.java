@@ -39,7 +39,7 @@ public class SimilarGameService {
 
     private List<RecommendationDTO> getRecommendationsBasedOnGame(Integer igdbId, String bearerToken,
                                                                    int limit, String reasonPrefix) {
-        GameDTO sourceGame = gameServiceClient.getGameById(igdbId);
+        GameDTO sourceGame = gameServiceClient.getGameById(igdbId, bearerToken);
         if (sourceGame == null || sourceGame.getGenres() == null || sourceGame.getGenres().isEmpty()) {
             log.warn("Could not find game {} or it has no genres", igdbId);
             return Collections.emptyList();
@@ -52,18 +52,18 @@ public class SimilarGameService {
                 .distinct()
                 .collect(Collectors.toMap(g -> g, g -> 1.0));
 
-        List<GameDTO> candidates = fetchCandidates(new ArrayList<>(genreProfile.keySet()));
+        List<GameDTO> candidates = fetchCandidates(new ArrayList<>(genreProfile.keySet()), bearerToken);
 
         return rankAndSlice(candidates, ownedGameIds, userPlatforms, genreProfile, igdbId,
                 reasonPrefix + sourceGame.getName(), limit);
     }
 
-    private List<GameDTO> fetchCandidates(List<String> genres) {
+    private List<GameDTO> fetchCandidates(List<String> genres, String bearerToken) {
         List<GameDTO> candidates = new ArrayList<>();
         for (String genre : genres) {
             if (genre != null && !genre.isBlank()) {
                 int page = ThreadLocalRandom.current().nextInt(0, 20);
-                candidates.addAll(gameServiceClient.searchByGenre(genre, null, page));
+                candidates.addAll(gameServiceClient.searchByGenre(genre, null, page, bearerToken));
             }
         }
         return candidates;

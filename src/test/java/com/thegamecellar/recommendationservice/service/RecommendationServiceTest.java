@@ -40,7 +40,7 @@ class RecommendationServiceTest {
     void getPersonalized_returns_tier3_for_new_user_with_no_rated_games() {
         when(libraryServiceClient.getGames("token")).thenReturn(List.of());
         when(libraryServiceClient.getPlatforms("token")).thenReturn(List.of(platform("PC")));
-        when(gameServiceClient.getPopularGames("PC")).thenReturn(List.of(game(1, "Popular Game")));
+        when(gameServiceClient.getPopularGames(eq("PC"), anyString())).thenReturn(List.of(game(1, "Popular Game")));
 
         List<RecommendationDTO> result = recommendationService.getPersonalized("token", 10);
 
@@ -53,7 +53,7 @@ class RecommendationServiceTest {
     void getPersonalized_tier3_falls_back_to_global_popular_when_no_platforms() {
         when(libraryServiceClient.getGames("token")).thenReturn(List.of());
         when(libraryServiceClient.getPlatforms("token")).thenReturn(List.of());
-        when(gameServiceClient.getPopularGames(null)).thenReturn(List.of(game(1, "Global Popular")));
+        when(gameServiceClient.getPopularGames(isNull(), anyString())).thenReturn(List.of(game(1, "Global Popular")));
 
         List<RecommendationDTO> result = recommendationService.getPersonalized("token", 10);
 
@@ -67,8 +67,8 @@ class RecommendationServiceTest {
         UserGameDTO rated = ratedGame(1, 8);
         when(libraryServiceClient.getGames("token")).thenReturn(List.of(rated));
         when(libraryServiceClient.getPlatforms("token")).thenReturn(List.of(platform("PC")));
-        when(gameServiceClient.getGameById(1)).thenReturn(gameWithGenres(1, "RPG"));
-        when(gameServiceClient.searchByGenre(eq("RPG"), isNull(), anyInt())).thenReturn(List.of(game(2, "Popular RPG", "RPG")));
+        when(gameServiceClient.getGameById(eq(1), anyString())).thenReturn(gameWithGenres(1, "RPG"));
+        when(gameServiceClient.searchByGenre(eq("RPG"), isNull(), anyInt(), anyString())).thenReturn(List.of(game(2, "Popular RPG", "RPG")));
 
         List<RecommendationDTO> result = recommendationService.getPersonalized("token", 10);
 
@@ -87,12 +87,12 @@ class RecommendationServiceTest {
         when(libraryServiceClient.getPlatforms("token")).thenReturn(List.of(platform("PC")));
 
         GameDTO rpgDetails = gameWithGenres(1, "RPG");
-        when(gameServiceClient.getGameById(1)).thenReturn(rpgDetails);
-        when(gameServiceClient.getGameById(2)).thenReturn(gameWithGenres(2, "RPG"));
-        when(gameServiceClient.getGameById(3)).thenReturn(gameWithGenres(3, "RPG"));
-        when(gameServiceClient.getGameById(4)).thenReturn(gameWithGenres(4, "RPG"));
-        when(gameServiceClient.getGameById(5)).thenReturn(gameWithGenres(5, "RPG"));
-        when(gameServiceClient.searchByGenre(eq("RPG"), isNull(), anyInt())).thenReturn(List.of(game(6, "New RPG", "RPG")));
+        when(gameServiceClient.getGameById(eq(1), anyString())).thenReturn(rpgDetails);
+        when(gameServiceClient.getGameById(eq(2), anyString())).thenReturn(gameWithGenres(2, "RPG"));
+        when(gameServiceClient.getGameById(eq(3), anyString())).thenReturn(gameWithGenres(3, "RPG"));
+        when(gameServiceClient.getGameById(eq(4), anyString())).thenReturn(gameWithGenres(4, "RPG"));
+        when(gameServiceClient.getGameById(eq(5), anyString())).thenReturn(gameWithGenres(5, "RPG"));
+        when(gameServiceClient.searchByGenre(eq("RPG"), isNull(), anyInt(), anyString())).thenReturn(List.of(game(6, "New RPG", "RPG")));
 
         List<RecommendationDTO> result = recommendationService.getPersonalized("token", 10);
 
@@ -106,7 +106,7 @@ class RecommendationServiceTest {
     void getPersonalized_excludes_games_already_in_collection() {
         when(libraryServiceClient.getGames("token")).thenReturn(List.of(ownedGame(1)));
         when(libraryServiceClient.getPlatforms("token")).thenReturn(List.of(platform("PC")));
-        when(gameServiceClient.getPopularGames("PC")).thenReturn(
+        when(gameServiceClient.getPopularGames(eq("PC"), anyString())).thenReturn(
                 List.of(game(1, "Owned Game"), game(2, "New Game"))
         );
 
