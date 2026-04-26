@@ -17,6 +17,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.when;
@@ -35,7 +36,7 @@ class SimilarGameServiceTest {
 
     @Test
     void getSimilar_returns_empty_when_source_game_not_found() {
-        when(gameServiceClient.getGameById(999)).thenReturn(null);
+        when(gameServiceClient.getGameById(eq(999), anyString())).thenReturn(null);
 
         List<RecommendationDTO> result = similarGameService.getSimilar(999, "token", 10);
 
@@ -47,7 +48,7 @@ class SimilarGameServiceTest {
         GameDTO sourceGame = new GameDTO();
         sourceGame.setIgdbId(1);
         sourceGame.setGenres(List.of());
-        when(gameServiceClient.getGameById(1)).thenReturn(sourceGame);
+        when(gameServiceClient.getGameById(eq(1), anyString())).thenReturn(sourceGame);
 
         List<RecommendationDTO> result = similarGameService.getSimilar(1, "token", 10);
 
@@ -56,10 +57,10 @@ class SimilarGameServiceTest {
 
     @Test
     void getSimilar_excludes_the_source_game_from_results() {
-        when(gameServiceClient.getGameById(1)).thenReturn(sourceGame(1, "The Witcher 3", "RPG"));
+        when(gameServiceClient.getGameById(eq(1), anyString())).thenReturn(sourceGame(1, "The Witcher 3", "RPG"));
         when(libraryServiceClient.getGames("token")).thenReturn(List.of());
         when(libraryServiceClient.getPlatforms("token")).thenReturn(List.of());
-        when(gameServiceClient.searchByGenre(eq("RPG"), isNull(), anyInt())).thenReturn(
+        when(gameServiceClient.searchByGenre(eq("RPG"), isNull(), anyInt(), anyString())).thenReturn(
                 List.of(game(1, "The Witcher 3", "RPG"), game(2, "Dragon Age", "RPG"))
         );
 
@@ -70,10 +71,10 @@ class SimilarGameServiceTest {
 
     @Test
     void getSimilar_excludes_games_already_in_collection() {
-        when(gameServiceClient.getGameById(1)).thenReturn(sourceGame(1, "The Witcher 3", "RPG"));
+        when(gameServiceClient.getGameById(eq(1), anyString())).thenReturn(sourceGame(1, "The Witcher 3", "RPG"));
         when(libraryServiceClient.getGames("token")).thenReturn(List.of(ownedGame(2)));
         when(libraryServiceClient.getPlatforms("token")).thenReturn(List.of());
-        when(gameServiceClient.searchByGenre(eq("RPG"), isNull(), anyInt())).thenReturn(
+        when(gameServiceClient.searchByGenre(eq("RPG"), isNull(), anyInt(), anyString())).thenReturn(
                 List.of(game(2, "Owned RPG", "RPG"), game(3, "Free RPG", "RPG"))
         );
 
@@ -85,10 +86,10 @@ class SimilarGameServiceTest {
 
     @Test
     void getSimilar_filters_by_user_platforms() {
-        when(gameServiceClient.getGameById(1)).thenReturn(sourceGame(1, "The Witcher 3", "RPG"));
+        when(gameServiceClient.getGameById(eq(1), anyString())).thenReturn(sourceGame(1, "The Witcher 3", "RPG"));
         when(libraryServiceClient.getGames("token")).thenReturn(List.of());
         when(libraryServiceClient.getPlatforms("token")).thenReturn(List.of(platform("PC")));
-        when(gameServiceClient.searchByGenre(eq("RPG"), isNull(), anyInt())).thenReturn(
+        when(gameServiceClient.searchByGenre(eq("RPG"), isNull(), anyInt(), anyString())).thenReturn(
                 List.of(gameOnPlatform(2, "PC Game", "RPG", "PC"),
                         gameOnPlatform(3, "Console Game", "RPG", "PlayStation 4"))
         );
@@ -101,10 +102,10 @@ class SimilarGameServiceTest {
 
     @Test
     void getSimilar_uses_similar_to_reason_prefix() {
-        when(gameServiceClient.getGameById(1)).thenReturn(sourceGame(1, "The Witcher 3", "RPG"));
+        when(gameServiceClient.getGameById(eq(1), anyString())).thenReturn(sourceGame(1, "The Witcher 3", "RPG"));
         when(libraryServiceClient.getGames("token")).thenReturn(List.of());
         when(libraryServiceClient.getPlatforms("token")).thenReturn(List.of());
-        when(gameServiceClient.searchByGenre(eq("RPG"), isNull(), anyInt())).thenReturn(List.of(game(2, "Dragon Age", "RPG")));
+        when(gameServiceClient.searchByGenre(eq("RPG"), isNull(), anyInt(), anyString())).thenReturn(List.of(game(2, "Dragon Age", "RPG")));
 
         List<RecommendationDTO> result = similarGameService.getSimilar(1, "token", 10);
 
@@ -113,10 +114,10 @@ class SimilarGameServiceTest {
 
     @Test
     void getBecauseYouLiked_uses_because_you_liked_reason_prefix() {
-        when(gameServiceClient.getGameById(1)).thenReturn(sourceGame(1, "The Witcher 3", "RPG"));
+        when(gameServiceClient.getGameById(eq(1), anyString())).thenReturn(sourceGame(1, "The Witcher 3", "RPG"));
         when(libraryServiceClient.getGames("token")).thenReturn(List.of());
         when(libraryServiceClient.getPlatforms("token")).thenReturn(List.of());
-        when(gameServiceClient.searchByGenre(eq("RPG"), isNull(), anyInt())).thenReturn(List.of(game(2, "Dragon Age", "RPG")));
+        when(gameServiceClient.searchByGenre(eq("RPG"), isNull(), anyInt(), anyString())).thenReturn(List.of(game(2, "Dragon Age", "RPG")));
 
         List<RecommendationDTO> result = similarGameService.getBecauseYouLiked(1, "token", 10);
 
@@ -125,7 +126,7 @@ class SimilarGameServiceTest {
 
     @Test
     void getSimilar_returns_empty_when_library_service_is_down() {
-        when(gameServiceClient.getGameById(1)).thenReturn(sourceGame(1, "The Witcher 3", "RPG"));
+        when(gameServiceClient.getGameById(eq(1), anyString())).thenReturn(sourceGame(1, "The Witcher 3", "RPG"));
         when(libraryServiceClient.getGames("token")).thenReturn(List.of());
         // getPlatforms and searchByGenre not mocked — Mockito returns empty list by default
 

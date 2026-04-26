@@ -21,6 +21,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
@@ -34,7 +35,7 @@ public class RecommendationService {
     private final LibraryServiceClient libraryServiceClient;
 
     public List<RecommendationDTO> getPersonalized(String bearerToken, int limit) {
-        List<UserGameDTO> allGames = libraryServiceClient.getGames(bearerToken);
+        List<UserGameDTO> allGames = Objects.requireNonNullElseGet(libraryServiceClient.getGames(bearerToken), List::of);
         List<UserGameDTO> ratedGames = allGames.stream()
                 .filter(g -> g.getRating() != null)
                 .toList();
@@ -43,30 +44,32 @@ public class RecommendationService {
                 .map(UserGameDTO::getIgdbGameId)
                 .collect(Collectors.toSet());
 
-        Set<String> userPlatforms = libraryServiceClient.getPlatforms(bearerToken).stream()
+        List<UserPlatformDTO> platformList = Objects.requireNonNullElseGet(libraryServiceClient.getPlatforms(bearerToken), List::of);
+        Set<String> userPlatforms = platformList.stream()
                 .map(UserPlatformDTO::getPlatformName)
                 .collect(Collectors.toSet());
 
         RecommendationTier tier = TierSelector.select(ratedGames.size());
 
         return switch (tier) {
-            case ONE -> getTier1(ratedGames, ownedGameIds, userPlatforms, limit);
-            case TWO -> getTier2(ratedGames, ownedGameIds, userPlatforms, limit);
-            case THREE -> getTier3(ownedGameIds, userPlatforms, limit);
+            case ONE -> getTier1(ratedGames, ownedGameIds, userPlatforms, limit, bearerToken);
+            case TWO -> getTier2(ratedGames, ownedGameIds, userPlatforms, limit, bearerToken);
+            case THREE -> getTier3(ownedGameIds, userPlatforms, limit, bearerToken);
         };
     }
 
     private List<RecommendationDTO> getTier1(List<UserGameDTO> ratedGames,
                                               Set<Integer> ownedGameIds,
                                               Set<String> userPlatforms,
-                                              int limit) {
+                                              int limit,
+                                              String bearerToken) {
         // Fetch game details for rated games to build genre profile.
         // Uses explicit loop instead of Collectors.toMap — toMap rejects null values and throws NPE
         // when a fetch fails, which would crash Tier 1 before the Tier 3 fallback is reached.
         Map<Integer, GameDTO> gameDetails = new HashMap<>();
         for (UserGameDTO g : ratedGames) {
             try {
-                GameDTO dto = gameServiceClient.getGameById(g.getIgdbGameId());
+                GameDTO dto = gameServiceClient.getGameById(g.getIgdbGameId(), bearerToken);
                 if (dto != null) {
                     gameDetails.put(g.getIgdbGameId(), dto);
                 }
@@ -92,13 +95,15 @@ public class RecommendationService {
         List<GameDTO> candidates = new ArrayList<>();
         for (String genre : genresToSearch) {
             int page = ThreadLocalRandom.current().nextInt(0, 20);
-            List<GameDTO> results = gameServiceClient.searchByGenre(genre, null, page);
+            List<GameDTO> results = gameServiceClient.searchByGenre(genre, null, page, bearerToken);
             candidates.addAll(results);
         }
 
         // Deduplicate, filter by platform, exclude owned, score and sort
         Set<Integer> seen = new HashSet<>();
         List<GameDTO> filtered = candidates.stream()
+                .filter(Objects::nonNull)
+                .filter(g -> g.getIgdbId() != null)
                 .filter(g -> seen.add(g.getIgdbId()))
                 .filter(g -> !ownedGameIds.contains(g.getIgdbId()))
                 .filter(g -> matchesAnyPlatform(g, userPlatforms))
@@ -108,7 +113,7 @@ public class RecommendationService {
         // serve popular games so the dashboard is never empty.
         if (filtered.isEmpty()) {
             log.warn("Tier 1 genre search returned no candidates, falling back to popular games");
-            return getTier3(ownedGameIds, userPlatforms, limit);
+            return getTier3(ownedGameIds, userPlatforms, limit, bearerToken);
         }
 
         List<GameDTO> scored = filtered.stream()
@@ -126,13 +131,14 @@ public class RecommendationService {
     private List<RecommendationDTO> getTier2(List<UserGameDTO> ratedGames,
                                               Set<Integer> ownedGameIds,
                                               Set<String> userPlatforms,
-                                              int limit) {
+                                              int limit,
+                                              String bearerToken) {
         // Build genre set from the few rated games
         Set<String> preferredGenres = ratedGames.stream()
                 .map(UserGameDTO::getIgdbGameId)
                 .map(id -> {
                     try {
-                        return gameServiceClient.getGameById(id);
+                        return gameServiceClient.getGameById(id, bearerToken);
                     } catch (Exception ex) {
                         return null;
                     }
@@ -151,11 +157,13 @@ public class RecommendationService {
         List<GameDTO> candidates = new ArrayList<>();
         for (String genre : genresToSearch) {
             int page = ThreadLocalRandom.current().nextInt(0, 20);
-            candidates.addAll(gameServiceClient.searchByGenre(genre, null, page));
+            candidates.addAll(gameServiceClient.searchByGenre(genre, null, page, bearerToken));
         }
 
         Set<Integer> seen = new HashSet<>();
         List<GameDTO> filtered = candidates.stream()
+                .filter(Objects::nonNull)
+                .filter(g -> g.getIgdbId() != null)
                 .filter(g -> seen.add(g.getIgdbId()))
                 .filter(g -> !ownedGameIds.contains(g.getIgdbId()))
                 .filter(g -> matchesAnyPlatform(g, userPlatforms))
@@ -164,7 +172,7 @@ public class RecommendationService {
         // Fallback: if genre search yields nothing (e.g. Game Service degraded), use popular games
         if (filtered.isEmpty()) {
             log.warn("Tier 2 genre search returned no candidates, falling back to popular games");
-            return getTier3(ownedGameIds, userPlatforms, limit);
+            return getTier3(ownedGameIds, userPlatforms, limit, bearerToken);
         }
 
         Collections.shuffle(filtered);
@@ -176,20 +184,23 @@ public class RecommendationService {
 
     private List<RecommendationDTO> getTier3(Set<Integer> ownedGameIds,
                                               Set<String> userPlatforms,
-                                              int limit) {
+                                              int limit,
+                                              String bearerToken) {
         List<GameDTO> popular = new ArrayList<>();
 
         if (userPlatforms.isEmpty()) {
             // No platforms set — fall back to globally popular
-            popular.addAll(gameServiceClient.getPopularGames(null));
+            popular.addAll(gameServiceClient.getPopularGames(null, bearerToken));
         } else {
             for (String platform : userPlatforms) {
-                popular.addAll(gameServiceClient.getPopularGames(platform));
+                popular.addAll(gameServiceClient.getPopularGames(platform, bearerToken));
             }
         }
 
         Set<Integer> seen = new HashSet<>();
         List<GameDTO> filtered = popular.stream()
+                .filter(Objects::nonNull)
+                .filter(g -> g.getIgdbId() != null)
                 .filter(g -> seen.add(g.getIgdbId()))
                 .filter(g -> !ownedGameIds.contains(g.getIgdbId()))
                 .collect(Collectors.toList());

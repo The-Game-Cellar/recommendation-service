@@ -16,6 +16,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -33,7 +34,7 @@ class WildCardServiceTest {
     @Test
     void getWildCard_excludes_games_already_in_collection() {
         when(libraryServiceClient.getGames("token")).thenReturn(List.of(ownedGame(1)));
-        when(gameServiceClient.getRandomFromCache(anyInt())).thenReturn(List.of(game(1, "Owned Game"), game(2, "New Game")));
+        when(gameServiceClient.getRandomFromCache(anyInt(), anyString())).thenReturn(List.of(game(1, "Owned Game"), game(2, "New Game")));
 
         List<RecommendationDTO> result = wildCardService.getWildCard("token", 10);
 
@@ -44,7 +45,7 @@ class WildCardServiceTest {
     @Test
     void getWildCard_draws_from_cache_regardless_of_platform() {
         when(libraryServiceClient.getGames("token")).thenReturn(List.of());
-        when(gameServiceClient.getRandomFromCache(anyInt())).thenReturn(List.of(game(1, "PC Game"), game(2, "Console Game")));
+        when(gameServiceClient.getRandomFromCache(anyInt(), anyString())).thenReturn(List.of(game(1, "PC Game"), game(2, "Console Game")));
 
         List<RecommendationDTO> result = wildCardService.getWildCard("token", 10);
 
@@ -54,7 +55,7 @@ class WildCardServiceTest {
     @Test
     void getWildCard_respects_limit() {
         when(libraryServiceClient.getGames("token")).thenReturn(List.of());
-        when(gameServiceClient.getRandomFromCache(anyInt())).thenReturn(
+        when(gameServiceClient.getRandomFromCache(anyInt(), anyString())).thenReturn(
                 List.of(game(1, "A"), game(2, "B"), game(3, "C"), game(4, "D"), game(5, "E"))
         );
 
@@ -66,7 +67,7 @@ class WildCardServiceTest {
     @Test
     void getWildCard_returns_empty_when_cache_is_empty() {
         when(libraryServiceClient.getGames("token")).thenReturn(List.of());
-        when(gameServiceClient.getRandomFromCache(anyInt())).thenReturn(List.of());
+        when(gameServiceClient.getRandomFromCache(anyInt(), anyString())).thenReturn(List.of());
 
         List<RecommendationDTO> result = wildCardService.getWildCard("token", 10);
 
@@ -76,7 +77,7 @@ class WildCardServiceTest {
     @Test
     void getWildCard_returns_wildcard_reason() {
         when(libraryServiceClient.getGames("token")).thenReturn(List.of());
-        when(gameServiceClient.getRandomFromCache(anyInt())).thenReturn(List.of(game(1, "Some Game")));
+        when(gameServiceClient.getRandomFromCache(anyInt(), anyString())).thenReturn(List.of(game(1, "Some Game")));
 
         List<RecommendationDTO> result = wildCardService.getWildCard("token", 10);
 
