@@ -4,6 +4,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 @NoArgsConstructor
@@ -14,6 +15,7 @@ public class UserGameDTO {
     private String status;
     private Integer rating;
     private String platform;
+    private List<String> genres;
     private LocalDateTime dateAdded;
     private LocalDateTime lastPlayed;
     private Integer playtime;

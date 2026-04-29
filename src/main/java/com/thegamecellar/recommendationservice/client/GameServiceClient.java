@@ -5,12 +5,14 @@ import com.thegamecellar.recommendationservice.model.dto.game.GameDTO;
 import com.thegamecellar.recommendationservice.model.dto.game.GameSearchDTO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -38,6 +40,9 @@ public class GameServiceClient {
                     igdbId
             );
             return response.getBody();
+        } catch (HttpClientErrorException.NotFound ex) {
+            log.info("Game {} not found in Game Service (404) — returning null for graceful skip", igdbId);
+            return null;
         } catch (RestClientException ex) {
             log.warn("Failed to fetch game {} from Game Service: {}", igdbId, ex.getMessage());
             throw new ServiceCommunicationException("Game Service unavailable", ex);
@@ -69,11 +74,16 @@ public class GameServiceClient {
     }
 
     public List<GameDTO> searchByGenre(String genre, String platform, int page, String bearerToken) {
+        return searchByGenre(genre, platform, page, bearerToken, false);
+    }
+
+    public List<GameDTO> searchByGenre(String genre, String platform, int page, String bearerToken, boolean dbOnly) {
         try {
             UriComponentsBuilder builder = UriComponentsBuilder
                     .fromUriString(gameServiceUrl + "/api/v1/games/search")
                     .queryParam("pageSize", 40)
-                    .queryParam("page", page);
+                    .queryParam("page", page)
+                    .queryParam("dbOnly", dbOnly);
             if (genre != null && !genre.isBlank()) {
                 builder.queryParam("genre", genre);
             }
@@ -123,6 +133,10 @@ public class GameServiceClient {
     private HttpEntity<Void> buildRequest(String bearerToken) {
         HttpHeaders headers = new HttpHeaders();
         headers.set(HttpHeaders.AUTHORIZATION, bearerToken);
+        String requestId = MDC.get("requestId");
+        if (requestId != null) {
+            headers.set("X-Request-ID", requestId);
+        }
         return new HttpEntity<>(headers);
     }
 }

@@ -21,6 +21,8 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 class RecommendationServiceTest {
@@ -64,16 +66,16 @@ class RecommendationServiceTest {
 
     @Test
     void getPersonalized_returns_tier2_for_user_with_few_rated_games() {
-        UserGameDTO rated = ratedGame(1, 8);
+        UserGameDTO rated = ratedGame(1, 8, "RPG");
         when(libraryServiceClient.getGames("token")).thenReturn(List.of(rated));
         when(libraryServiceClient.getPlatforms("token")).thenReturn(List.of(platform("PC")));
-        when(gameServiceClient.getGameById(eq(1), anyString())).thenReturn(gameWithGenres(1, "RPG"));
-        when(gameServiceClient.searchByGenre(eq("RPG"), isNull(), anyInt(), anyString())).thenReturn(List.of(game(2, "Popular RPG", "RPG")));
+        when(gameServiceClient.searchByGenre(eq("RPG"), isNull(), anyInt(), anyString(), eq(true))).thenReturn(List.of(game(2, "Popular RPG", "RPG")));
 
         List<RecommendationDTO> result = recommendationService.getPersonalized("token", 10);
 
         assertThat(result.get(0).getTier()).isEqualTo(2);
         assertThat(result.get(0).getReason()).isEqualTo("Popular in your genres");
+        verify(gameServiceClient, never()).getGameById(anyInt(), anyString());
     }
 
     // --- Tier 1: 5+ rated games ---
@@ -81,23 +83,18 @@ class RecommendationServiceTest {
     @Test
     void getPersonalized_returns_tier1_for_user_with_5_or_more_rated_games() {
         List<UserGameDTO> ratedGames = List.of(
-                ratedGame(1, 9), ratedGame(2, 8), ratedGame(3, 7), ratedGame(4, 9), ratedGame(5, 8)
+                ratedGame(1, 9, "RPG"), ratedGame(2, 8, "RPG"), ratedGame(3, 7, "RPG"),
+                ratedGame(4, 9, "RPG"), ratedGame(5, 8, "RPG")
         );
         when(libraryServiceClient.getGames("token")).thenReturn(ratedGames);
         when(libraryServiceClient.getPlatforms("token")).thenReturn(List.of(platform("PC")));
-
-        GameDTO rpgDetails = gameWithGenres(1, "RPG");
-        when(gameServiceClient.getGameById(eq(1), anyString())).thenReturn(rpgDetails);
-        when(gameServiceClient.getGameById(eq(2), anyString())).thenReturn(gameWithGenres(2, "RPG"));
-        when(gameServiceClient.getGameById(eq(3), anyString())).thenReturn(gameWithGenres(3, "RPG"));
-        when(gameServiceClient.getGameById(eq(4), anyString())).thenReturn(gameWithGenres(4, "RPG"));
-        when(gameServiceClient.getGameById(eq(5), anyString())).thenReturn(gameWithGenres(5, "RPG"));
-        when(gameServiceClient.searchByGenre(eq("RPG"), isNull(), anyInt(), anyString())).thenReturn(List.of(game(6, "New RPG", "RPG")));
+        when(gameServiceClient.searchByGenre(eq("RPG"), isNull(), anyInt(), anyString(), eq(true))).thenReturn(List.of(game(6, "New RPG", "RPG")));
 
         List<RecommendationDTO> result = recommendationService.getPersonalized("token", 10);
 
         assertThat(result.get(0).getTier()).isEqualTo(1);
         assertThat(result.get(0).getReason()).isEqualTo("Based on your ratings");
+        verify(gameServiceClient, never()).getGameById(anyInt(), anyString());
     }
 
     // --- Collection exclusion ---
@@ -130,16 +127,19 @@ class RecommendationServiceTest {
 
     // --- Helpers ---
 
-    private UserGameDTO ratedGame(int rawgId, int rating) {
+    private UserGameDTO ratedGame(int igdbId, int rating, String... genres) {
         UserGameDTO game = new UserGameDTO();
-        game.setIgdbGameId(rawgId);
+        game.setIgdbGameId(igdbId);
         game.setRating(rating);
+        if (genres.length > 0) {
+            game.setGenres(List.of(genres));
+        }
         return game;
     }
 
-    private UserGameDTO ownedGame(int rawgId) {
+    private UserGameDTO ownedGame(int igdbId) {
         UserGameDTO game = new UserGameDTO();
-        game.setIgdbGameId(rawgId);
+        game.setIgdbGameId(igdbId);
         return game;
     }
 
@@ -161,10 +161,4 @@ class RecommendationServiceTest {
         return game;
     }
 
-    private GameDTO gameWithGenres(int rawgId, String... genres) {
-        GameDTO game = new GameDTO();
-        game.setIgdbId(rawgId);
-        game.setGenres(List.of(genres));
-        return game;
-    }
 }

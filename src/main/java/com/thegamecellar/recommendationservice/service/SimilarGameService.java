@@ -63,7 +63,7 @@ public class SimilarGameService {
         for (String genre : genres) {
             if (genre != null && !genre.isBlank()) {
                 int page = ThreadLocalRandom.current().nextInt(0, 20);
-                candidates.addAll(gameServiceClient.searchByGenre(genre, null, page, bearerToken));
+                candidates.addAll(gameServiceClient.searchByGenre(genre, null, page, bearerToken, true));
             }
         }
         return candidates;
