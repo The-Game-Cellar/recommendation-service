@@ -13,5 +13,11 @@ spring:
 services:
   game-service:
     url: ${GAME_SERVICE_URL:http://localhost:8081}
+    connect-timeout: ${GAME_SERVICE_CONNECT_TIMEOUT:2000}
+    read-timeout: ${GAME_SERVICE_READ_TIMEOUT:8000}
   library-service:
     url: ${LIBRARY_SERVICE_URL:http://localhost:8082}
+
+logging:
+  pattern:
+    console: "%clr(%d{HH:mm:ss.SSS}){faint} %clr(${LOG_LEVEL_PATTERN:-%5p}) %clr([%X{requestId:-........}]){magenta} %clr([%-15.15t]){faint} %clr(%-40.40logger{39}){cyan} %clr(:){faint} %m%n%wEx"

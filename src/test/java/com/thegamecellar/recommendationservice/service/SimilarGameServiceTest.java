@@ -60,7 +60,7 @@ class SimilarGameServiceTest {
         when(gameServiceClient.getGameById(eq(1), anyString())).thenReturn(sourceGame(1, "The Witcher 3", "RPG"));
         when(libraryServiceClient.getGames("token")).thenReturn(List.of());
         when(libraryServiceClient.getPlatforms("token")).thenReturn(List.of());
-        when(gameServiceClient.searchByGenre(eq("RPG"), isNull(), anyInt(), anyString())).thenReturn(
+        when(gameServiceClient.searchByGenre(eq("RPG"), isNull(), anyInt(), anyString(), eq(true))).thenReturn(
                 List.of(game(1, "The Witcher 3", "RPG"), game(2, "Dragon Age", "RPG"))
         );
 
@@ -74,7 +74,7 @@ class SimilarGameServiceTest {
         when(gameServiceClient.getGameById(eq(1), anyString())).thenReturn(sourceGame(1, "The Witcher 3", "RPG"));
         when(libraryServiceClient.getGames("token")).thenReturn(List.of(ownedGame(2)));
         when(libraryServiceClient.getPlatforms("token")).thenReturn(List.of());
-        when(gameServiceClient.searchByGenre(eq("RPG"), isNull(), anyInt(), anyString())).thenReturn(
+        when(gameServiceClient.searchByGenre(eq("RPG"), isNull(), anyInt(), anyString(), eq(true))).thenReturn(
                 List.of(game(2, "Owned RPG", "RPG"), game(3, "Free RPG", "RPG"))
         );
 
@@ -89,7 +89,7 @@ class SimilarGameServiceTest {
         when(gameServiceClient.getGameById(eq(1), anyString())).thenReturn(sourceGame(1, "The Witcher 3", "RPG"));
         when(libraryServiceClient.getGames("token")).thenReturn(List.of());
         when(libraryServiceClient.getPlatforms("token")).thenReturn(List.of(platform("PC")));
-        when(gameServiceClient.searchByGenre(eq("RPG"), isNull(), anyInt(), anyString())).thenReturn(
+        when(gameServiceClient.searchByGenre(eq("RPG"), isNull(), anyInt(), anyString(), eq(true))).thenReturn(
                 List.of(gameOnPlatform(2, "PC Game", "RPG", "PC"),
                         gameOnPlatform(3, "Console Game", "RPG", "PlayStation 4"))
         );
@@ -105,7 +105,7 @@ class SimilarGameServiceTest {
         when(gameServiceClient.getGameById(eq(1), anyString())).thenReturn(sourceGame(1, "The Witcher 3", "RPG"));
         when(libraryServiceClient.getGames("token")).thenReturn(List.of());
         when(libraryServiceClient.getPlatforms("token")).thenReturn(List.of());
-        when(gameServiceClient.searchByGenre(eq("RPG"), isNull(), anyInt(), anyString())).thenReturn(List.of(game(2, "Dragon Age", "RPG")));
+        when(gameServiceClient.searchByGenre(eq("RPG"), isNull(), anyInt(), anyString(), eq(true))).thenReturn(List.of(game(2, "Dragon Age", "RPG")));
 
         List<RecommendationDTO> result = similarGameService.getSimilar(1, "token", 10);
 
@@ -117,7 +117,7 @@ class SimilarGameServiceTest {
         when(gameServiceClient.getGameById(eq(1), anyString())).thenReturn(sourceGame(1, "The Witcher 3", "RPG"));
         when(libraryServiceClient.getGames("token")).thenReturn(List.of());
         when(libraryServiceClient.getPlatforms("token")).thenReturn(List.of());
-        when(gameServiceClient.searchByGenre(eq("RPG"), isNull(), anyInt(), anyString())).thenReturn(List.of(game(2, "Dragon Age", "RPG")));
+        when(gameServiceClient.searchByGenre(eq("RPG"), isNull(), anyInt(), anyString(), eq(true))).thenReturn(List.of(game(2, "Dragon Age", "RPG")));
 
         List<RecommendationDTO> result = similarGameService.getBecauseYouLiked(1, "token", 10);
 

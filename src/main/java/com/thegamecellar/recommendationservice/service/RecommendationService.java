@@ -17,7 +17,6 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -63,39 +62,18 @@ public class RecommendationService {
                                               Set<String> userPlatforms,
                                               int limit,
                                               String bearerToken) {
-        // Fetch game details for rated games to build genre profile.
-        // Uses explicit loop instead of Collectors.toMap — toMap rejects null values and throws NPE
-        // when a fetch fails, which would crash Tier 1 before the Tier 3 fallback is reached.
-        Map<Integer, GameDTO> gameDetails = new HashMap<>();
-        for (UserGameDTO g : ratedGames) {
-            try {
-                GameDTO dto = gameServiceClient.getGameById(g.getIgdbGameId(), bearerToken);
-                if (dto != null) {
-                    gameDetails.put(g.getIgdbGameId(), dto);
-                }
-            } catch (Exception ex) {
-                log.warn("Could not fetch details for game {}, skipping", g.getIgdbGameId());
-            }
-        }
+        Map<String, Double> genreProfile = UserProfileBuilder.build(ratedGames);
 
-        Map<String, Double> genreProfile = UserProfileBuilder.build(ratedGames, gameDetails);
-
-       /*  Cap at top 8 genres by weight to bound fanout.
-         TODO (post-MVP): Replace hard cap with weighted random genre sampling — higher-rated genres
-          should appear more often but all genres should have a chance to contribute, not just top N.
-
-          Consider pool-size target as a stopping condition instead of a fixed genre count. */
-        /* TODO (post-MVP): Extend Game Service to accept multiple genres in one request
-            so we can replace this loop with a single call. Requires collaboration with Game Service.*/
-        List<String> genresToSearch = genreProfile.entrySet().stream()
-                .sorted(Map.Entry.<String, Double>comparingByValue().reversed())
-                .limit(8)
-                .map(Map.Entry::getKey)
-                .toList();
+        // Weighted random sampling (Efraimidis-Spirakis A-Res) — higher-rated genres appear more
+        // often but all genres have a chance, preserving variety across requests. Bound at 8 to
+        // limit fanout to Game Service.
+        // TODO (post-MVP): see [[Multi-Dimensional Recommendation Algorithm]] — extend to theme + tag.
+        // TODO (post-MVP): extend Game Service to accept multiple genres in one request to collapse this loop.
+        List<String> genresToSearch = UserProfileBuilder.sampleWeighted(genreProfile, 8);
         List<GameDTO> candidates = new ArrayList<>();
         for (String genre : genresToSearch) {
             int page = ThreadLocalRandom.current().nextInt(0, 20);
-            List<GameDTO> results = gameServiceClient.searchByGenre(genre, null, page, bearerToken);
+            List<GameDTO> results = gameServiceClient.searchByGenre(genre, null, page, bearerToken, true);
             candidates.addAll(results);
         }
 
@@ -133,31 +111,17 @@ public class RecommendationService {
                                               Set<String> userPlatforms,
                                               int limit,
                                               String bearerToken) {
-        // Build genre set from the few rated games
-        Set<String> preferredGenres = ratedGames.stream()
-                .map(UserGameDTO::getIgdbGameId)
-                .map(id -> {
-                    try {
-                        return gameServiceClient.getGameById(id, bearerToken);
-                    } catch (Exception ex) {
-                        return null;
-                    }
-                })
-                .filter(g -> g != null && g.getGenres() != null)
-                .flatMap(g -> g.getGenres().stream())
-                .collect(Collectors.toSet());
-
-        // Cap at top 5 genres — Tier-2 users have few ratings so genre set is naturally small,
-        // but we cap defensively to bound fanout.
-        // TODO (post-MVP): Replace hard cap with weighted random genre sampling.
-        // TODO (post-MVP): Extend Game Service to accept multiple genres in one request
-        //  so we can replace this loop with a single call. Requires collaboration with Game Service.
-        List<String> genresToSearch = preferredGenres.stream().limit(5).toList();
+        // Build same weighted profile as Tier 1, just smaller (Tier 2 users have few ratings).
+        // Weighted sampling capped at 5 — favours higher-rated genres but keeps variety across requests.
+        // TODO (post-MVP): see [[Multi-Dimensional Recommendation Algorithm]] — extend to theme + tag.
+        // TODO (post-MVP): extend Game Service to accept multiple genres in one request to collapse this loop.
+        Map<String, Double> genreProfile = UserProfileBuilder.build(ratedGames);
+        List<String> genresToSearch = UserProfileBuilder.sampleWeighted(genreProfile, 5);
 
         List<GameDTO> candidates = new ArrayList<>();
         for (String genre : genresToSearch) {
             int page = ThreadLocalRandom.current().nextInt(0, 20);
-            candidates.addAll(gameServiceClient.searchByGenre(genre, null, page, bearerToken));
+            candidates.addAll(gameServiceClient.searchByGenre(genre, null, page, bearerToken, true));
         }
 
         Set<Integer> seen = new HashSet<>();
@@ -207,8 +171,9 @@ public class RecommendationService {
 
         Collections.shuffle(filtered);
 
+        String reason = userPlatforms.isEmpty() ? "Popular games" : "Popular on your platforms";
         return filtered.subList(0, Math.min(limit, filtered.size())).stream()
-                .map(g -> toDTO(g, "Popular on your platforms", 3))
+                .map(g -> toDTO(g, reason, 3))
                 .toList();
     }
 

@@ -5,6 +5,7 @@ import com.thegamecellar.recommendationservice.model.dto.library.UserGameDTO;
 import com.thegamecellar.recommendationservice.model.dto.library.UserPlatformDTO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -82,6 +83,10 @@ public class LibraryServiceClient {
     private HttpEntity<Void> buildRequest(String bearerToken) {
         HttpHeaders headers = new HttpHeaders();
         headers.set(HttpHeaders.AUTHORIZATION, bearerToken);
+        String requestId = MDC.get("requestId");
+        if (requestId != null) {
+            headers.set("X-Request-ID", requestId);
+        }
         return new HttpEntity<>(headers);
     }
 }
