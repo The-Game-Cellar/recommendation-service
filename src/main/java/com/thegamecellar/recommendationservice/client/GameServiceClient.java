@@ -81,7 +81,7 @@ public class GameServiceClient {
         try {
             UriComponentsBuilder builder = UriComponentsBuilder
                     .fromUriString(gameServiceUrl + "/api/v1/games/search")
-                    .queryParam("pageSize", 40)
+                    .queryParam("pageSize", 100)
                     .queryParam("page", page)
                     .queryParam("dbOnly", dbOnly);
             if (genre != null && !genre.isBlank()) {
@@ -91,18 +91,53 @@ public class GameServiceClient {
                 builder.queryParam("platform", platform);
             }
             ResponseEntity<GameSearchDTO> response = restTemplate.exchange(
-                    builder.toUriString(),
+                    builder.build().encode().toUri(),
                     HttpMethod.GET,
                     buildRequest(bearerToken),
                     GameSearchDTO.class
             );
             GameSearchDTO body = response.getBody();
-            if (body == null || body.getGames() == null) {
-                return Collections.emptyList();
-            }
+            if (body == null || body.getGames() == null) return Collections.emptyList();
             return body.getGames();
         } catch (RestClientException ex) {
             log.warn("Failed to search games by genre '{}' from Game Service: {}", genre, ex.getMessage());
+            return Collections.emptyList();
+        }
+    }
+
+    /**
+     * Single-call uniform random sample of quality games in one genre. Game Service runs an
+     * SQL {@code ORDER BY RANDOM() LIMIT N} on rows that pass server-side rating + vote-count
+     * filters, so the result is a true uniform sample over the full quality subset — no page
+     * math, no NULL-tail bias, no pagination quirks.
+     */
+    public List<GameDTO> randomQualityByGenre(String genre, java.math.BigDecimal minRating, int minVotes, int limit, String bearerToken) {
+        try {
+            // Build URI object (already encoded) and pass to RestTemplate's URI overload —
+            // the String-URL overload runs URI template processing that double-encodes any
+            // pre-encoded percent sequences (e.g. "%28" becomes "%2528"), which Tomcat then
+            // single-decodes to a literal "%28" in the request param, breaking SQL matches
+            // for genres like "Role-playing (RPG)".
+            java.net.URI uri = UriComponentsBuilder
+                    .fromUriString(gameServiceUrl + "/api/v1/games/random-quality")
+                    .queryParam("genre", genre)
+                    .queryParam("minRating", minRating.toPlainString())
+                    .queryParam("minVotes", minVotes)
+                    .queryParam("limit", limit)
+                    .build()
+                    .encode()
+                    .toUri();
+            ResponseEntity<GameSearchDTO> response = restTemplate.exchange(
+                    uri,
+                    HttpMethod.GET,
+                    buildRequest(bearerToken),
+                    GameSearchDTO.class
+            );
+            GameSearchDTO body = response.getBody();
+            if (body == null || body.getGames() == null) return Collections.emptyList();
+            return body.getGames();
+        } catch (RestClientException ex) {
+            log.warn("Failed quality random fetch for genre '{}' from Game Service: {}", genre, ex.getMessage());
             return Collections.emptyList();
         }
     }

@@ -7,6 +7,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.function.Function;
 
 public class UserProfileBuilder {
 
@@ -33,6 +34,51 @@ public class UserProfileBuilder {
             profile.put(entry.getKey(), avg);
         }
         return profile;
+    }
+
+    /**
+     * Multi-dimensional profile. Each dimension accumulates the user's rating as a weight
+     * on every feature value of every rated game. Higher-rated games dominate the resulting
+     * weight vectors. Consumed by the weighted-cosine scorer + MMR re-rank.
+     */
+    public static UserProfile buildMultiDim(List<UserGameDTO> ratedGames) {
+        if (ratedGames == null || ratedGames.isEmpty()) {
+            return new UserProfile(new HashMap<>(), new HashMap<>(), new HashMap<>(), 0);
+        }
+        Map<String, Double> genres = accumulate(ratedGames, UserGameDTO::getGenres);
+        Map<String, Double> themes = accumulate(ratedGames, UserGameDTO::getThemes);
+        Map<String, Double> tags = accumulate(ratedGames, UserGameDTO::getTags);
+        return new UserProfile(genres, themes, tags, ratedGames.size());
+    }
+
+    /**
+     * Profile weight per rated game. Ratings of 5 or below contribute nothing — those are
+     * ambivalent or actively-disliked titles and shouldn't shape recommendations. Above 5,
+     * the contribution is {@code rating - 5} so a 9★ game weighs 4× as much as a 6★ game
+     * (was 1.5× when raw rating was used as weight, which let mediocre ratings dilute the
+     * profile signal).
+     */
+    private static double weightFor(int rating) {
+        return rating > 5 ? (rating - 5) : 0.0;
+    }
+
+    private static Map<String, Double> accumulate(List<UserGameDTO> games,
+                                                   Function<UserGameDTO, List<String>> extractor) {
+        Map<String, Double> totals = new HashMap<>();
+        for (UserGameDTO g : games) {
+            if (g.getRating() == null) continue;
+            double weight = weightFor(g.getRating());
+            if (weight <= 0.0) continue;
+            List<String> values = extractor.apply(g);
+            if (values == null || values.isEmpty()) continue;
+            for (String v : values) {
+                if (v == null) continue;
+                String key = v.trim();
+                if (key.isEmpty()) continue;
+                totals.merge(key, weight, Double::sum);
+            }
+        }
+        return totals;
     }
 
     /**
