@@ -147,7 +147,7 @@ class SimilarGameServiceTest {
         GameDTO game = new GameDTO();
         game.setIgdbId(rawgId);
         game.setName(name);
-        game.setRating(BigDecimal.valueOf(4.0));
+        game.setRating(BigDecimal.valueOf(8.0));
         game.setGenres(List.of(genres));
         return game;
     }

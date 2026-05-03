@@ -88,7 +88,7 @@ class WildCardServiceTest {
         GameDTO game = new GameDTO();
         game.setIgdbId(rawgId);
         game.setName(name);
-        game.setRating(BigDecimal.valueOf(4.0));
+        game.setRating(BigDecimal.valueOf(8.0));
         game.setPlatforms(List.of("PC"));
         return game;
     }

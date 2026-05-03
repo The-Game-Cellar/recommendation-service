@@ -1,6 +1,9 @@
 package com.thegamecellar.recommendationservice.controller;
 
 import com.thegamecellar.recommendationservice.model.dto.DashboardDTO;
+import com.thegamecellar.recommendationservice.model.dto.GroupedRecommendationsResponse;
+import com.thegamecellar.recommendationservice.model.dto.GroupedRequest;
+import com.thegamecellar.recommendationservice.model.dto.PersonalizedRequest;
 import com.thegamecellar.recommendationservice.model.dto.RecommendationDTO;
 import com.thegamecellar.recommendationservice.service.DashboardService;
 import com.thegamecellar.recommendationservice.service.RecommendationService;
@@ -11,6 +14,7 @@ import com.thegamecellar.recommendationservice.util.JwtUtils;
 //  downstream calls to Game Service and Library Service. Rate limiting should be handled
 //  centrally in API Gateway (port 8000) rather than per-service.
 import lombok.RequiredArgsConstructor;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import org.springframework.http.ResponseEntity;
@@ -18,11 +22,15 @@ import org.springframework.security.core.Authentication;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @Validated
 @RestController
@@ -35,12 +43,35 @@ public class RecommendationController {
     private final SimilarGameService similarGameService;
     private final DashboardService dashboardService;
 
-    @GetMapping("/personalized")
+    /**
+     * POST rather than GET: the {@code recentlyShownIds} list grows uncapped with session
+     * activity ("until logout" semantics) and would routinely exceed Tomcat's HTTP header
+     * buffer if shipped as a query string. The body shape lifts that ceiling to Spring's
+     * request-body limit (multi-MB).
+     */
+    @PostMapping("/personalized")
     public ResponseEntity<List<RecommendationDTO>> getPersonalized(
             Authentication authentication,
-            @RequestParam(defaultValue = "10") @Min(1) @Max(100) int limit) {
+            @Valid @RequestBody PersonalizedRequest request) {
         String token = JwtUtils.getBearerToken(authentication);
-        return ResponseEntity.ok(recommendationService.getPersonalized(token, limit));
+        Set<Integer> recent = request.getRecentlyShownIds() == null ? null : new HashSet<>(request.getRecentlyShownIds());
+        return ResponseEntity.ok(recommendationService.getPersonalized(token, request.getLimit(), recent));
+    }
+
+    /**
+     * Row-based grouped variant. Same auth / payload conventions as {@code /personalized}
+     * but the response splits results into genre-titled rows ranked by user's library
+     * composition, with cascading fallback to popular when user genres run out.
+     */
+    @PostMapping("/personalized/grouped")
+    public ResponseEntity<GroupedRecommendationsResponse> getPersonalizedGrouped(
+            Authentication authentication,
+            @RequestBody(required = false) GroupedRequest request) {
+        String token = JwtUtils.getBearerToken(authentication);
+        Set<Integer> recent = (request == null || request.getRecentlyShownIds() == null)
+                ? null
+                : new HashSet<>(request.getRecentlyShownIds());
+        return ResponseEntity.ok(recommendationService.getPersonalizedGrouped(token, recent));
     }
 
     @GetMapping("/wildcard")
