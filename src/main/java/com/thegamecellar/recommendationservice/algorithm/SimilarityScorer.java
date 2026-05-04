@@ -16,8 +16,9 @@ public class SimilarityScorer {
 
     // Multi-dim scoring weights. Tag still carries the sub-genre signal (souls-like,
     // open-world, roguelike) but genre weighs in heavier as a sanity bucket — keeps
-    // off-genre matches that happen to share a single tag from floating up. Theme is
-    // mood/setting fit. Rating prior gives a small boost to highly-aggregated games.
+    // off-genre matches that happen to share a single tag from floating up. Theme adds
+    // setting fit (fantasy / horror / sci-fi). Rating prior gives a small boost to
+    // highly-aggregated games.
     static final double ALPHA = 0.30;
     static final double BETA = 0.20;
     static final double GAMMA = 0.40;
