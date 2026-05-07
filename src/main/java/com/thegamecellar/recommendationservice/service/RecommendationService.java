@@ -66,7 +66,11 @@ public class RecommendationService {
     // games left after filtering to fill the row.
     public static final int GROUPED_TARGET_ROWS = 8;
     public static final int GROUPED_PER_ROW = 15;
-    private static final int GROUPED_OVERSAMPLE = 40;
+    // Larger random pool per row gives the platform-boost sort meaningful headroom even after
+    // the owned + cross-row + recently-shown filters thin the candidate set. Earlier 40 left
+    // too few primary-platform candidates for users with deep collections on a single platform
+    // (catalog distribution is naturally PC-skewed in genres like Adventure / Indie / Strategy).
+    private static final int GROUPED_OVERSAMPLE = 150;
 
     private final GameServiceClient gameServiceClient;
     private final LibraryServiceClient libraryServiceClient;
@@ -106,7 +110,7 @@ public class RecommendationService {
         if (tier == RecommendationTier.THREE) {
             return buildTier3Grouped(ownedGameIds, recentlyShown, userPlatforms, bearerToken);
         }
-        return buildTier12Grouped(ratedGames, ownedGameIds, recentlyShown, userPlatforms, bearerToken, tier);
+        return buildTier12Grouped(ratedGames, ownedGameIds, recentlyShown, userPlatforms, platformList, bearerToken, tier);
     }
 
     private com.thegamecellar.recommendationservice.model.dto.GroupedRecommendationsResponse buildTier3Grouped(
@@ -133,8 +137,16 @@ public class RecommendationService {
             Set<Integer> ownedGameIds,
             Set<Integer> recentlyShown,
             Set<String> userPlatforms,
+            List<UserPlatformDTO> platformList,
             String bearerToken,
             RecommendationTier tier) {
+        // Sqrt-normalised platform profile derived from rated games — feeds the per-row
+        // platform-boost ordering inside buildGenreRow so the grouped layout reflects platform
+        // skew the same way the flat /personalized layout does. The platformList carries the
+        // is_primary flag so a primary-marked platform gets its raw count multiplied before
+        // normalisation. Empty when the user has no rated games with a platform value
+        // (degrades to no-op via platformBoost = 0).
+        Map<String, Double> platformProfile = UserProfileBuilder.buildMultiDim(ratedGames, platformList).platforms();
         // Genre priority — fractional weighting across the user's RATED games. Each rated game
         // contributes 1.0 vote total, split evenly across its genres (a 4-genre AAA contributes
         // 0.25 to each, a 1-genre indie contributes 1.0 to its single genre). Normalises against
@@ -165,7 +177,7 @@ public class RecommendationService {
 
         for (String genre : genrePriority) {
             if (rows.size() >= GROUPED_TARGET_ROWS) break;
-            List<RecommendationDTO> rowGames = buildGenreRow(genre, ownedGameIds, seenAcrossRows, recentlyShown, userPlatforms, bearerToken, tier);
+            List<RecommendationDTO> rowGames = buildGenreRow(genre, ownedGameIds, seenAcrossRows, recentlyShown, userPlatforms, platformProfile, bearerToken, tier);
             if (rowGames.isEmpty()) continue;
             rowGames.forEach(g -> seenAcrossRows.add(g.getIgdbId()));
             usedGenres.add(genre);
@@ -184,7 +196,7 @@ public class RecommendationService {
                 .collect(Collectors.toList());
         if (!longTail.isEmpty()) {
             String pick = longTail.get(java.util.concurrent.ThreadLocalRandom.current().nextInt(longTail.size()));
-            List<RecommendationDTO> discoveryGames = buildGenreRow(pick, ownedGameIds, seenAcrossRows, recentlyShown, userPlatforms, bearerToken, tier);
+            List<RecommendationDTO> discoveryGames = buildGenreRow(pick, ownedGameIds, seenAcrossRows, recentlyShown, userPlatforms, platformProfile, bearerToken, tier);
             if (!discoveryGames.isEmpty()) {
                 discoveryGames.forEach(g -> seenAcrossRows.add(g.getIgdbId()));
                 rows.add(com.thegamecellar.recommendationservice.model.dto.RecommendationRow.builder()
@@ -229,6 +241,7 @@ public class RecommendationService {
                                                    Set<Integer> seenAcrossRows,
                                                    Set<Integer> recentlyShown,
                                                    Set<String> userPlatforms,
+                                                   Map<String, Double> platformProfile,
                                                    String bearerToken,
                                                    RecommendationTier tier) {
         // Oversample so cross-row dedupe + recency filtering still leaves a full row of fresh
@@ -236,13 +249,30 @@ public class RecommendationService {
         // call gives a different sample.
         List<GameDTO> raw = gameServiceClient.randomQualityByGenre(
                 genre, MIN_EFFECTIVE_RATING, MIN_RATING_COUNT, GROUPED_OVERSAMPLE, bearerToken);
-        return raw.stream()
+        List<GameDTO> filtered = raw.stream()
                 .filter(Objects::nonNull)
                 .filter(g -> g.getIgdbId() != null)
                 .filter(g -> !ownedGameIds.contains(g.getIgdbId()))
                 .filter(g -> !seenAcrossRows.contains(g.getIgdbId()))
                 .filter(g -> !recentlyShown.contains(g.getIgdbId()))
                 .filter(g -> matchesAnyPlatform(g, userPlatforms))
+                .collect(Collectors.toList());
+
+        // Platform-boost ordering within the row. Genre is fixed so genre/theme/tag scoring
+        // wouldn't differentiate much within a single-genre row — platform alignment is the
+        // useful within-row signal. Materialise jittered scores in a map first; calling jitter
+        // inside a Comparator violates the symmetric/transitive sort contract.
+        if (!platformProfile.isEmpty() && !filtered.isEmpty()) {
+            Map<Integer, Double> rowScores = new HashMap<>(filtered.size() * 2);
+            for (GameDTO g : filtered) {
+                double score = SimilarityScorer.platformBoost(g, platformProfile)
+                        + ThreadLocalRandom.current().nextDouble() * SCORE_JITTER;
+                rowScores.put(g.getIgdbId(), score);
+            }
+            filtered.sort(Comparator.comparingDouble((GameDTO g) -> rowScores.get(g.getIgdbId())).reversed());
+        }
+
+        return filtered.stream()
                 .limit(GROUPED_PER_ROW)
                 .map(g -> toDTO(g, "From your " + genre + " ratings", tier == RecommendationTier.ONE ? 1 : 2))
                 .collect(Collectors.toList());
@@ -272,8 +302,8 @@ public class RecommendationService {
         RecommendationTier tier = TierSelector.select(ratedGames.size());
 
         return switch (tier) {
-            case ONE -> getTier1(ratedGames, ownedGameIds, recentlyShown, userPlatforms, limit, bearerToken);
-            case TWO -> getTier2(ratedGames, ownedGameIds, recentlyShown, userPlatforms, limit, bearerToken);
+            case ONE -> getTier1(ratedGames, ownedGameIds, recentlyShown, userPlatforms, platformList, limit, bearerToken);
+            case TWO -> getTier2(ratedGames, ownedGameIds, recentlyShown, userPlatforms, platformList, limit, bearerToken);
             case THREE -> getTier3(ownedGameIds, recentlyShown, userPlatforms, limit, bearerToken);
         };
     }
@@ -282,11 +312,14 @@ public class RecommendationService {
                                               Set<Integer> ownedGameIds,
                                               Set<Integer> recentlyShownIds,
                                               Set<String> userPlatforms,
+                                              List<UserPlatformDTO> platformList,
                                               int limit,
                                               String bearerToken) {
-        // Multi-dim profile (genre + theme + tag) accumulated by rating weight.
+        // Multi-dim profile (genre + theme + tag + platforms) accumulated by rating weight.
         // Tag dimension carries the sub-genre signal (souls-like, open-world, roguelike).
-        UserProfile profile = UserProfileBuilder.buildMultiDim(ratedGames);
+        // Platform dimension lifts primary-platform candidates via the is_primary flag in
+        // platformList.
+        UserProfile profile = UserProfileBuilder.buildMultiDim(ratedGames, platformList);
 
         // Weighted random sampling (Efraimidis-Spirakis A-Res) — higher-rated genres appear more
         // often but all genres have a chance, preserving variety across requests. Bound at 8 to
@@ -344,12 +377,13 @@ public class RecommendationService {
                                               Set<Integer> ownedGameIds,
                                               Set<Integer> recentlyShownIds,
                                               Set<String> userPlatforms,
+                                              List<UserPlatformDTO> platformList,
                                               int limit,
                                               String bearerToken) {
         // Same multi-dim profile as Tier 1, just sparser (Tier 2 users have 1-4 rated games).
         // If tags + themes are completely empty (rated games not yet healed), profile.isEmpty()
         // is checked downstream by SimilarityScorer + MMR which fall back gracefully.
-        UserProfile profile = UserProfileBuilder.buildMultiDim(ratedGames);
+        UserProfile profile = UserProfileBuilder.buildMultiDim(ratedGames, platformList);
         List<String> genresToSearch = UserProfileBuilder.sampleWeighted(profile.genres(), 5);
 
         List<GameDTO> candidates = new ArrayList<>();
@@ -499,6 +533,7 @@ public class RecommendationService {
         Map<Integer, Double> scores = new HashMap<>(candidates.size() * 2);
         for (GameDTO candidate : candidates) {
             double score = SimilarityScorer.scoreMultiDim(candidate, profile)
+                    + SimilarityScorer.EPSILON * SimilarityScorer.platformBoost(candidate, profile.platforms())
                     + ThreadLocalRandom.current().nextDouble() * SCORE_JITTER;
             if (recentlyShownIds.contains(candidate.getIgdbId())) {
                 score -= SHOWN_PENALTY;

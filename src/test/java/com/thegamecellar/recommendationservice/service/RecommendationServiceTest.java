@@ -246,6 +246,69 @@ class RecommendationServiceTest {
         assertThat(result.get(0).getTier()).isEqualTo(2);
     }
 
+    // --- Platform weighting ---
+
+    @Test
+    void getPersonalized_tier1_favours_primary_platform_in_output() {
+        // User: 5 rated PS5 games (rating 9), 1 rated PC game (rating 9).
+        // Sqrt-normalised platform weights: PS5 ≈ 0.91, PC ≈ 0.41 → normalised PS5 ≈ 0.69, PC ≈ 0.31.
+        // Both platforms connected via onboarding so matchesAnyPlatform passes both.
+        List<UserGameDTO> ratedGames = List.of(
+                ratedOnPlatform(1, 9, "PlayStation 5", "RPG"),
+                ratedOnPlatform(2, 9, "PlayStation 5", "RPG"),
+                ratedOnPlatform(3, 9, "PlayStation 5", "RPG"),
+                ratedOnPlatform(4, 9, "PlayStation 5", "RPG"),
+                ratedOnPlatform(5, 9, "PlayStation 5", "RPG"),
+                ratedOnPlatform(6, 9, "PC", "RPG")
+        );
+        when(libraryServiceClient.getGames("token")).thenReturn(ratedGames);
+        when(libraryServiceClient.getPlatforms("token")).thenReturn(List.of(platform("PlayStation 5"), platform("PC")));
+
+        // Two RPG candidates with identical genre/theme/tag profile but different platforms.
+        // PS5-exclusive should outscore PC-exclusive due to platformBoost.
+        GameDTO ps5Candidate = gameOnPlatforms(100, "PS5 RPG", List.of("PlayStation 5"), "RPG");
+        GameDTO pcCandidate = gameOnPlatforms(101, "PC RPG", List.of("PC"), "RPG");
+        when(gameServiceClient.randomQualityByGenre(eq("RPG"), any(), anyInt(), anyInt(), anyString()))
+                .thenReturn(List.of(ps5Candidate, pcCandidate));
+
+        // Run multiple times — even with score jitter, PS5 should land first the vast majority.
+        int ps5First = 0;
+        int trials = 50;
+        for (int i = 0; i < trials; i++) {
+            List<RecommendationDTO> result = recommendationService.getPersonalized("token", 10);
+            if (!result.isEmpty() && result.get(0).getIgdbId() == 100) ps5First++;
+        }
+
+        // platformBoost contribution = 0.15 * (0.69 - 0.31) ≈ 0.057, jitter range = 0.08 — close
+        // call but PS5 should still dominate. Assert majority lower-bound.
+        assertThat(ps5First).as("PS5-exclusive should rank first more often than PC-exclusive")
+                .isGreaterThan(trials / 2);
+    }
+
+    @Test
+    void getPersonalized_single_platform_user_unchanged_by_platform_weighting() {
+        // User has only PC games rated → sqrt-normalised PC weight = 1.0 → constant boost across
+        // all candidates that pass the filter → ranking determined by genre/theme/tag only.
+        List<UserGameDTO> ratedGames = List.of(
+                ratedOnPlatform(1, 9, "PC", "RPG"),
+                ratedOnPlatform(2, 9, "PC", "RPG"),
+                ratedOnPlatform(3, 9, "PC", "RPG"),
+                ratedOnPlatform(4, 9, "PC", "RPG"),
+                ratedOnPlatform(5, 9, "PC", "RPG")
+        );
+        when(libraryServiceClient.getGames("token")).thenReturn(ratedGames);
+        when(libraryServiceClient.getPlatforms("token")).thenReturn(List.of(platform("PC")));
+        when(gameServiceClient.randomQualityByGenre(eq("RPG"), any(), anyInt(), anyInt(), anyString()))
+                .thenReturn(List.of(gameOnPlatforms(100, "PC RPG", List.of("PC"), "RPG")));
+
+        List<RecommendationDTO> result = recommendationService.getPersonalized("token", 10);
+
+        // Sanity: the only candidate makes it through.
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getIgdbId()).isEqualTo(100);
+        assertThat(result.get(0).getTier()).isEqualTo(1);
+    }
+
     // --- Library service down ---
 
     @Test
@@ -275,6 +338,18 @@ class RecommendationServiceTest {
         UserGameDTO game = ratedGame(igdbId, rating, genres);
         game.setStatus(status);
         return game;
+    }
+
+    private UserGameDTO ratedOnPlatform(int igdbId, int rating, String platform, String... genres) {
+        UserGameDTO game = ratedGame(igdbId, rating, genres);
+        game.setPlatform(platform);
+        return game;
+    }
+
+    private GameDTO gameOnPlatforms(int igdbId, String name, List<String> platforms, String... genres) {
+        GameDTO g = game(igdbId, name, genres);
+        g.setPlatforms(platforms);
+        return g;
     }
 
     private UserGameDTO ownedGame(int igdbId) {
