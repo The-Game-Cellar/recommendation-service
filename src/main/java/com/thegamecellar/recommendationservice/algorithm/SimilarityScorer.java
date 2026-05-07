@@ -24,6 +24,16 @@ public class SimilarityScorer {
     static final double GAMMA = 0.40;
     static final double DELTA = 0.10;
 
+    /**
+     * Platform-boost coefficient. Score range from {@link #scoreMultiDim} is roughly [0, 1]
+     * (sum of weighted-cosine terms + clamped rating prior); the platform profile is
+     * sqrt-normalised in {@code UserProfileBuilder} so {@link #platformBoost} returns a value
+     * in [0, 1] too. 0.15 places the platform contribution on the same magnitude as the
+     * rating prior — meaningful but not dominating. Set to 0 to neutralise the entire
+     * platform layer without code revert.
+     */
+    public static final double EPSILON = 0.15;
+
     private SimilarityScorer() {}
 
     public static double score(GameDTO candidate, Map<String, Double> genreProfile) {
@@ -96,6 +106,43 @@ public class SimilarityScorer {
         }
         if (normP == 0.0) return 0.0;
         return dot / (Math.sqrt(candidateCount) * Math.sqrt(normP));
+    }
+
+    /**
+     * Weighted average of profile-platform weights across the intersection of the candidate's
+     * catalog platforms and the user's sqrt-normalised platform profile. Returns a value in
+     * {@code [0, 1]}:
+     * <ul>
+     *   <li>Pure primary-platform release → full primary weight (e.g. {@code 0.75} for a 90/10 PS5/PC user).</li>
+     *   <li>Cross-platform release on primary + secondary → average of the two profile weights
+     *       ({@code (0.75 + 0.25) / 2 = 0.50} above) — a structural mild penalty for breadth.</li>
+     *   <li>Pure secondary-platform release → secondary weight ({@code 0.25}).</li>
+     *   <li>No catalog-platform in the user profile → {@code 0.0}.</li>
+     * </ul>
+     * <p>
+     * The average self-scales to library skew: a 95/5 user gets a wide gap between pure-primary
+     * and cross-platform candidates, a 51/49 user gets nearly no gap (no real "primary"), and a
+     * single-platform user degenerates to a no-op (singleton average = same value, every
+     * filter-passing candidate gets identical boost, ranking unchanged).
+     * <p>
+     * Profile-platforms not present in the candidate's catalog list are simply not in the
+     * intersection and don't pull the average down. Catalog platforms not in the profile are
+     * skipped (they contribute nothing — neither boost nor penalty).
+     */
+    public static double platformBoost(GameDTO candidate, Map<String, Double> profilePlatforms) {
+        if (candidate == null || profilePlatforms == null || profilePlatforms.isEmpty()) return 0.0;
+        List<String> candidatePlatforms = candidate.getPlatforms();
+        if (candidatePlatforms == null || candidatePlatforms.isEmpty()) return 0.0;
+        double sum = 0.0;
+        int count = 0;
+        for (String p : candidatePlatforms) {
+            if (p == null) continue;
+            Double w = profilePlatforms.get(p);
+            if (w == null) continue;
+            sum += w;
+            count++;
+        }
+        return count == 0 ? 0.0 : sum / count;
     }
 
     /**

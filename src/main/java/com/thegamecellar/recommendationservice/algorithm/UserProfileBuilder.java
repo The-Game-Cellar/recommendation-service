@@ -1,15 +1,30 @@
 package com.thegamecellar.recommendationservice.algorithm;
 
 import com.thegamecellar.recommendationservice.model.dto.library.UserGameDTO;
+import com.thegamecellar.recommendationservice.model.dto.library.UserPlatformDTO;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
 public class UserProfileBuilder {
+
+    /**
+     * Multiplier applied to a platform's raw rating-weighted count when the user has marked
+     * that platform as primary in their {@code user_platforms} entry. Doubles the raw count
+     * before sqrt-normalisation, so a primary-marked PS5 with raw count 69 becomes 138, lifting
+     * the post-normalisation weight noticeably without erasing the user's secondary platforms.
+     * Dormant when no platform is marked primary (today's default — UI to set this is a future
+     * issue) and gracefully no-op for users with all platforms marked primary (multiplier
+     * applied uniformly cancels in normalisation).
+     */
+    public static final double PRIMARY_PLATFORM_BOOST_MULTIPLIER = 2.0;
 
     private UserProfileBuilder() {}
 
@@ -40,15 +55,63 @@ public class UserProfileBuilder {
      * Multi-dimensional profile. Each dimension accumulates the user's rating as a weight
      * on every feature value of every rated game. Higher-rated games dominate the resulting
      * weight vectors. Consumed by the weighted-cosine scorer + MMR re-rank.
+     * <p>
+     * The {@code platforms} dimension is built from the per-row {@link UserGameDTO#getPlatform()}
+     * field (the platform the user actually plays a game on, set when adding it to the library)
+     * and post-processed through a square-root normalisation so values sum to 1.0. Sqrt damping
+     * keeps a heavily-skewed library's secondary platform visible while still preferring the
+     * primary — a 90 PS5 / 10 PC user gets weights {@code {PS5≈0.75, PC≈0.25}} instead of the
+     * raw {@code {PS5=0.90, PC=0.10}} that would mute the secondary platform almost entirely.
      */
     public static UserProfile buildMultiDim(List<UserGameDTO> ratedGames) {
+        return buildMultiDim(ratedGames, List.of());
+    }
+
+    /**
+     * Multi-dim profile with optional primary-platform amplification. {@code userPlatforms}
+     * carries the user's onboarding-set platforms with the {@link UserPlatformDTO#getIsPrimary()}
+     * flag — any platform marked primary gets its raw rating-weighted count multiplied by
+     * {@link #PRIMARY_PLATFORM_BOOST_MULTIPLIER} before sqrt-normalisation, lifting its
+     * post-normalisation weight without erasing secondaries. Pass an empty list (or use the
+     * single-arg overload) to skip the amplification entirely.
+     */
+    public static UserProfile buildMultiDim(List<UserGameDTO> ratedGames,
+                                             List<UserPlatformDTO> userPlatforms) {
         if (ratedGames == null || ratedGames.isEmpty()) {
-            return new UserProfile(new HashMap<>(), new HashMap<>(), new HashMap<>(), 0);
+            return new UserProfile(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>(), 0);
         }
         Map<String, Double> genres = accumulate(ratedGames, UserGameDTO::getGenres);
         Map<String, Double> themes = accumulate(ratedGames, UserGameDTO::getThemes);
         Map<String, Double> tags = accumulate(ratedGames, UserGameDTO::getTags);
-        return new UserProfile(genres, themes, tags, ratedGames.size());
+
+        Map<String, Double> rawPlatforms = accumulatePlatform(ratedGames);
+        applyPrimaryBoost(rawPlatforms, userPlatforms);
+        Map<String, Double> platforms = sqrtNormalise(rawPlatforms);
+
+        return new UserProfile(genres, themes, tags, platforms, ratedGames.size());
+    }
+
+    /**
+     * Multiplies the raw count of platforms marked {@code is_primary = true} by
+     * {@link #PRIMARY_PLATFORM_BOOST_MULTIPLIER}. Mutates the supplied map in place. No-op when
+     * {@code userPlatforms} is null/empty or when no platform has the flag set. Platforms with
+     * a primary flag but no rated games (raw count = 0) stay at 0 — primary-marking doesn't
+     * conjure data, it amplifies existing rating signal.
+     */
+    private static void applyPrimaryBoost(Map<String, Double> rawCounts,
+                                           List<UserPlatformDTO> userPlatforms) {
+        if (userPlatforms == null || userPlatforms.isEmpty()) return;
+        Set<String> primaryNames = userPlatforms.stream()
+                .filter(p -> Boolean.TRUE.equals(p.getIsPrimary()))
+                .map(UserPlatformDTO::getPlatformName)
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .collect(Collectors.toSet());
+        if (primaryNames.isEmpty()) return;
+        for (String name : primaryNames) {
+            rawCounts.computeIfPresent(name, (k, v) -> v * PRIMARY_PLATFORM_BOOST_MULTIPLIER);
+        }
     }
 
     /**
@@ -60,6 +123,48 @@ public class UserProfileBuilder {
      */
     private static double weightFor(int rating) {
         return rating > 5 ? (rating - 5) : 0.0;
+    }
+
+    /**
+     * Accumulates rating-weight per single-string {@link UserGameDTO#getPlatform()} value. Mirrors
+     * {@link #accumulate(List, Function)} but for the singular platform field rather than the list
+     * dimensions. Returns raw counts; sqrt-normalisation applied in {@link #sqrtNormalise(Map)}.
+     */
+    private static Map<String, Double> accumulatePlatform(List<UserGameDTO> games) {
+        Map<String, Double> totals = new HashMap<>();
+        for (UserGameDTO g : games) {
+            if (g.getRating() == null) continue;
+            double weight = weightFor(g.getRating());
+            if (weight <= 0.0) continue;
+            String platform = g.getPlatform();
+            if (platform == null) continue;
+            String key = platform.trim();
+            if (key.isEmpty()) continue;
+            totals.merge(key, weight, Double::sum);
+        }
+        return totals;
+    }
+
+    /**
+     * Sqrt-softens a raw count vector then normalises so values sum to 1.0. Standard IR damping
+     * pattern (BM25 / Lucene tfNorm) — compresses dynamic range so a heavily-skewed distribution
+     * doesn't push the secondary entries to near-zero. Empty input → empty output.
+     */
+    private static Map<String, Double> sqrtNormalise(Map<String, Double> raw) {
+        if (raw == null || raw.isEmpty()) return new HashMap<>();
+        double sumSqrt = 0.0;
+        for (Double v : raw.values()) {
+            if (v == null || v <= 0.0) continue;
+            sumSqrt += Math.sqrt(v);
+        }
+        if (sumSqrt == 0.0) return new HashMap<>();
+        Map<String, Double> normalised = new HashMap<>(raw.size() * 2);
+        for (Map.Entry<String, Double> e : raw.entrySet()) {
+            Double v = e.getValue();
+            if (v == null || v <= 0.0) continue;
+            normalised.put(e.getKey(), Math.sqrt(v) / sumSqrt);
+        }
+        return normalised;
     }
 
     private static Map<String, Double> accumulate(List<UserGameDTO> games,

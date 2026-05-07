@@ -60,7 +60,8 @@ public class MMRReRanker {
 
             for (int i = 0; i < remaining.size(); i++) {
                 GameDTO candidate = remaining.get(i);
-                double relevance = SimilarityScorer.scoreMultiDim(candidate, profile);
+                double relevance = SimilarityScorer.scoreMultiDim(candidate, profile)
+                        + SimilarityScorer.EPSILON * SimilarityScorer.platformBoost(candidate, profile.platforms());
                 if (jitter > 0.0) {
                     relevance += ThreadLocalRandom.current().nextDouble() * jitter;
                 }

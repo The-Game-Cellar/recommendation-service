@@ -83,7 +83,7 @@ class SimilarityScorerTest {
         candidate.setGenres(List.of("RPG"));
         candidate.setTags(List.of("souls-like"));
 
-        UserProfile empty = new UserProfile(new HashMap<>(), new HashMap<>(), new HashMap<>(), 0);
+        UserProfile empty = new UserProfile(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>(), 0);
 
         assertThat(SimilarityScorer.scoreMultiDim(candidate, empty)).isEqualTo(0.0);
     }
@@ -93,7 +93,7 @@ class SimilarityScorerTest {
         Map<String, Double> genres = Map.of("RPG", 9.0);
         Map<String, Double> themes = Map.of("Fantasy", 9.0);
         Map<String, Double> tags = Map.of("souls-like", 9.0);
-        UserProfile profile = new UserProfile(genres, themes, tags, 1);
+        UserProfile profile = new UserProfile(genres, themes, tags, new HashMap<>(), 1);
 
         // Pure-genre match (no theme/tag overlap with profile)
         GameDTO genreOnly = new GameDTO();
@@ -117,7 +117,7 @@ class SimilarityScorerTest {
     @Test
     void scoreMultiDim_includes_rating_prior_for_highly_rated_candidates() {
         Map<String, Double> tags = Map.of("souls-like", 9.0);
-        UserProfile profile = new UserProfile(new HashMap<>(), new HashMap<>(), tags, 1);
+        UserProfile profile = new UserProfile(new HashMap<>(), new HashMap<>(), tags, new HashMap<>(), 1);
 
         GameDTO base = new GameDTO();
         base.setTags(List.of("souls-like"));
@@ -136,7 +136,7 @@ class SimilarityScorerTest {
     @Test
     void scoreMultiDim_clamps_rating_prior_for_invalid_ratings() {
         UserProfile profile = new UserProfile(
-                Map.of("RPG", 9.0), new HashMap<>(), new HashMap<>(), 1);
+                Map.of("RPG", 9.0), new HashMap<>(), new HashMap<>(), new HashMap<>(), 1);
 
         GameDTO unrated = new GameDTO();
         unrated.setGenres(List.of("RPG"));
@@ -144,6 +144,117 @@ class SimilarityScorerTest {
 
         // Should still score positive on the genre overlap, just no rating prior contribution.
         assertThat(SimilarityScorer.scoreMultiDim(unrated, profile)).isGreaterThan(0.0);
+    }
+
+    @Test
+    void platformBoost_returns_average_weight_across_intersection() {
+        // User profile: PS5=0.75, PC=0.25.
+        Map<String, Double> profile = Map.of("PlayStation 5", 0.75, "PC", 0.25);
+
+        // Candidate available on PS5 + PC + Switch. Switch isn't in profile so excluded from
+        // average; intersection = {PS5: 0.75, PC: 0.25}; avg = 0.50.
+        GameDTO crossPlatform = new GameDTO();
+        crossPlatform.setPlatforms(List.of("PlayStation 5", "PC", "Switch"));
+
+        assertThat(SimilarityScorer.platformBoost(crossPlatform, profile)).isEqualTo(0.50);
+    }
+
+    @Test
+    void platformBoost_pure_primary_outscores_cross_platform_for_skewed_user() {
+        Map<String, Double> profile = Map.of("PlayStation 5", 0.75, "PC", 0.25);
+
+        GameDTO purePrimary = new GameDTO();
+        purePrimary.setPlatforms(List.of("PlayStation 5"));
+
+        GameDTO crossPlatform = new GameDTO();
+        crossPlatform.setPlatforms(List.of("PlayStation 5", "PC"));
+
+        // Pure-primary = 0.75; cross-platform = 0.50 (avg). 0.25 gap reflects user skew.
+        assertThat(SimilarityScorer.platformBoost(purePrimary, profile))
+                .isGreaterThan(SimilarityScorer.platformBoost(crossPlatform, profile));
+    }
+
+    @Test
+    void platformBoost_balanced_user_has_minimal_gap_between_pure_and_cross_platform() {
+        // A 50/50 user — no real primary. Average self-scales: gap shrinks to zero.
+        Map<String, Double> profile = Map.of("PlayStation 5", 0.50, "PC", 0.50);
+
+        GameDTO purePrimary = new GameDTO();
+        purePrimary.setPlatforms(List.of("PlayStation 5"));
+
+        GameDTO crossPlatform = new GameDTO();
+        crossPlatform.setPlatforms(List.of("PlayStation 5", "PC"));
+
+        assertThat(SimilarityScorer.platformBoost(purePrimary, profile)).isEqualTo(0.50);
+        assertThat(SimilarityScorer.platformBoost(crossPlatform, profile)).isEqualTo(0.50);
+    }
+
+    @Test
+    void platformBoost_single_platform_user_yields_constant_boost_for_filter_passing_candidates() {
+        // Single-platform user → singleton-average = same value for every candidate that
+        // passes matchesAnyPlatform. Constant additive doesn't change relative ranking.
+        Map<String, Double> profile = Map.of("PC", 1.0);
+
+        GameDTO pcExclusive = new GameDTO();
+        pcExclusive.setPlatforms(List.of("PC"));
+
+        GameDTO pcAndOthers = new GameDTO();
+        pcAndOthers.setPlatforms(List.of("PC", "Switch", "Xbox"));
+
+        assertThat(SimilarityScorer.platformBoost(pcExclusive, profile)).isEqualTo(1.0);
+        assertThat(SimilarityScorer.platformBoost(pcAndOthers, profile)).isEqualTo(1.0);
+    }
+
+    @Test
+    void platformBoost_returns_zero_when_no_intersection() {
+        Map<String, Double> profile = Map.of("PlayStation 5", 1.0);
+        GameDTO pcOnly = new GameDTO();
+        pcOnly.setPlatforms(List.of("PC"));
+
+        assertThat(SimilarityScorer.platformBoost(pcOnly, profile)).isEqualTo(0.0);
+    }
+
+    @Test
+    void platformBoost_returns_zero_for_null_candidate_platforms() {
+        Map<String, Double> profile = Map.of("PC", 1.0);
+        GameDTO sparse = new GameDTO();
+        sparse.setPlatforms(null);
+
+        assertThat(SimilarityScorer.platformBoost(sparse, profile)).isEqualTo(0.0);
+    }
+
+    @Test
+    void platformBoost_returns_zero_for_empty_profile_platforms() {
+        GameDTO candidate = new GameDTO();
+        candidate.setPlatforms(List.of("PC"));
+
+        assertThat(SimilarityScorer.platformBoost(candidate, new HashMap<>())).isEqualTo(0.0);
+        assertThat(SimilarityScorer.platformBoost(candidate, null)).isEqualTo(0.0);
+    }
+
+    @Test
+    void platformBoost_returns_secondary_weight_when_candidate_hits_secondary_only() {
+        // User has PS5 primary (0.75) but the candidate is PC-only (0.25). Singleton avg = 0.25.
+        Map<String, Double> profile = Map.of("PlayStation 5", 0.75, "PC", 0.25);
+        GameDTO pcExclusive = new GameDTO();
+        pcExclusive.setPlatforms(List.of("PC"));
+
+        assertThat(SimilarityScorer.platformBoost(pcExclusive, profile)).isEqualTo(0.25);
+    }
+
+    @Test
+    void platformBoost_handles_null_entries_in_candidate_platforms() {
+        Map<String, Double> profile = Map.of("PC", 1.0);
+        GameDTO sloppy = new GameDTO();
+        sloppy.setPlatforms(java.util.Arrays.asList(null, "PC", null));
+
+        assertThat(SimilarityScorer.platformBoost(sloppy, profile)).isEqualTo(1.0);
+    }
+
+    @Test
+    void platformBoost_returns_zero_for_null_candidate() {
+        Map<String, Double> profile = Map.of("PC", 1.0);
+        assertThat(SimilarityScorer.platformBoost(null, profile)).isEqualTo(0.0);
     }
 
     private GameDTO gameWithGenres(String... genres) {
