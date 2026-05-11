@@ -299,11 +299,16 @@ public class RecommendationService {
                 .map(UserPlatformDTO::getPlatformName)
                 .collect(Collectors.toSet());
 
+        // Onboarding-set genre preferences feed the cold-start prior in UserProfile.genres().
+        // Empty list when the user skipped the onboarding step or has not opted in via Profile —
+        // the blend formula degrades to pure rating-weighted accumulation in that case.
+        List<String> genrePreferences = Objects.requireNonNullElseGet(libraryServiceClient.getGenrePreferences(bearerToken), List::of);
+
         RecommendationTier tier = TierSelector.select(ratedGames.size());
 
         return switch (tier) {
-            case ONE -> getTier1(ratedGames, ownedGameIds, recentlyShown, userPlatforms, platformList, limit, bearerToken);
-            case TWO -> getTier2(ratedGames, ownedGameIds, recentlyShown, userPlatforms, platformList, limit, bearerToken);
+            case ONE -> getTier1(ratedGames, ownedGameIds, recentlyShown, userPlatforms, platformList, genrePreferences, limit, bearerToken);
+            case TWO -> getTier2(ratedGames, ownedGameIds, recentlyShown, userPlatforms, platformList, genrePreferences, limit, bearerToken);
             case THREE -> getTier3(ownedGameIds, recentlyShown, userPlatforms, limit, bearerToken);
         };
     }
@@ -313,13 +318,16 @@ public class RecommendationService {
                                               Set<Integer> recentlyShownIds,
                                               Set<String> userPlatforms,
                                               List<UserPlatformDTO> platformList,
+                                              List<String> genrePreferences,
                                               int limit,
                                               String bearerToken) {
         // Multi-dim profile (genre + theme + tag + platforms) accumulated by rating weight.
         // Tag dimension carries the sub-genre signal (souls-like, open-world, roguelike).
         // Platform dimension lifts primary-platform candidates via the is_primary flag in
-        // platformList.
-        UserProfile profile = UserProfileBuilder.buildMultiDim(ratedGames, platformList);
+        // platformList. Genre dimension blends the user's onboarding-set preferences with
+        // accumulated rating evidence — for Tier 1 (10+ rated games) the prior is fully
+        // discounted in favor of evidence (alpha = 1.0).
+        UserProfile profile = UserProfileBuilder.buildMultiDim(ratedGames, platformList, genrePreferences);
 
         // Weighted random sampling (Efraimidis-Spirakis A-Res) — higher-rated genres appear more
         // often but all genres have a chance, preserving variety across requests. Bound at 8 to
@@ -378,12 +386,15 @@ public class RecommendationService {
                                               Set<Integer> recentlyShownIds,
                                               Set<String> userPlatforms,
                                               List<UserPlatformDTO> platformList,
+                                              List<String> genrePreferences,
                                               int limit,
                                               String bearerToken) {
         // Same multi-dim profile as Tier 1, just sparser (Tier 2 users have 1-4 rated games).
+        // Genre-preference cold-start prior dominates here — at 4 ratings alpha = 0.4, so
+        // 60% of the genre signal still comes from onboarding-declared preferences.
         // If tags + themes are completely empty (rated games not yet healed), profile.isEmpty()
         // is checked downstream by SimilarityScorer + MMR which fall back gracefully.
-        UserProfile profile = UserProfileBuilder.buildMultiDim(ratedGames, platformList);
+        UserProfile profile = UserProfileBuilder.buildMultiDim(ratedGames, platformList, genrePreferences);
         List<String> genresToSearch = UserProfileBuilder.sampleWeighted(profile.genres(), 5);
 
         List<GameDTO> candidates = new ArrayList<>();

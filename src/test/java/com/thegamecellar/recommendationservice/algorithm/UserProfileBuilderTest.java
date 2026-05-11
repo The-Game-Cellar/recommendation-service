@@ -434,6 +434,139 @@ class UserProfileBuilderTest {
         assertThat(profile.platforms().get("PlayStation 5")).isEqualTo(1.0);
     }
 
+    @Test
+    void buildMultiDim_no_preferences_no_rated_games_returns_empty_profile() {
+        UserProfile profile = UserProfileBuilder.buildMultiDim(List.of(), List.of(), List.of());
+
+        assertThat(profile.genres()).isEmpty();
+        assertThat(profile.themes()).isEmpty();
+        assertThat(profile.tags()).isEmpty();
+        assertThat(profile.platforms()).isEmpty();
+        assertThat(profile.ratedGameCount()).isZero();
+    }
+
+    @Test
+    void buildMultiDim_no_preferences_many_rated_games_uses_raw_rating_weights() {
+        // No preferences → blend skipped → genres dimension is the raw rating-weighted accumulator
+        // (backward-compatible with the two-arg overload). Each 9-star game contributes
+        // weightFor(9) = 4; 8 RPG games + 2 Action games gives RPG=32, Action=8.
+        List<UserGameDTO> games = List.of(
+                ratedGame(1, 9, "RPG"),
+                ratedGame(2, 9, "RPG"),
+                ratedGame(3, 9, "RPG"),
+                ratedGame(4, 9, "RPG"),
+                ratedGame(5, 9, "RPG"),
+                ratedGame(6, 9, "RPG"),
+                ratedGame(7, 9, "RPG"),
+                ratedGame(8, 9, "RPG"),
+                ratedGame(9, 9, "Action"),
+                ratedGame(10, 9, "Action")
+        );
+
+        UserProfile profile = UserProfileBuilder.buildMultiDim(games, List.of(), List.of());
+
+        assertThat(profile.genres().get("RPG")).isCloseTo(32.0, within(0.001));
+        assertThat(profile.genres().get("Action")).isCloseTo(8.0, within(0.001));
+    }
+
+    @Test
+    void buildMultiDim_preferences_no_rated_games_blend_equals_uniform_prior() {
+        UserProfile profile = UserProfileBuilder.buildMultiDim(List.of(), List.of(),
+                List.of("RPG", "Strategy", "Roguelike"));
+
+        // Three preferred genres, each 1/3 since alpha = 0 (no rated games).
+        assertThat(profile.genres()).hasSize(3);
+        assertThat(profile.genres().get("RPG")).isCloseTo(1.0 / 3.0, within(0.001));
+        assertThat(profile.genres().get("Strategy")).isCloseTo(1.0 / 3.0, within(0.001));
+        assertThat(profile.genres().get("Roguelike")).isCloseTo(1.0 / 3.0, within(0.001));
+    }
+
+    @Test
+    void buildMultiDim_preferences_and_rated_at_cap_preferences_ignored() {
+        // 10 rated games hits PREFERENCE_BLEND_CAP exactly — alpha = 1.0, prior contribution 0.
+        List<UserGameDTO> games = List.of(
+                ratedGame(1, 9, "RPG"), ratedGame(2, 9, "RPG"), ratedGame(3, 9, "RPG"),
+                ratedGame(4, 9, "RPG"), ratedGame(5, 9, "RPG"), ratedGame(6, 9, "RPG"),
+                ratedGame(7, 9, "RPG"), ratedGame(8, 9, "RPG"), ratedGame(9, 9, "RPG"),
+                ratedGame(10, 9, "RPG")
+        );
+
+        UserProfile profile = UserProfileBuilder.buildMultiDim(games, List.of(),
+                List.of("Strategy", "Roguelike"));
+
+        // RPG dominates from ratings; Strategy + Roguelike (preferences) absent because
+        // alpha = 1.0 means (1 - alpha) * preferenceShare = 0.
+        assertThat(profile.genres()).containsOnlyKeys("RPG");
+        assertThat(profile.genres().get("RPG")).isCloseTo(1.0, within(0.001));
+    }
+
+    @Test
+    void buildMultiDim_preferences_and_rated_halfway_both_inputs_visible() {
+        // 5 rated games puts alpha at 0.5 exactly — half ratings, half preferences.
+        List<UserGameDTO> games = List.of(
+                ratedGame(1, 9, "RPG"),
+                ratedGame(2, 9, "RPG"),
+                ratedGame(3, 9, "RPG"),
+                ratedGame(4, 9, "RPG"),
+                ratedGame(5, 9, "RPG")
+        );
+
+        UserProfile profile = UserProfileBuilder.buildMultiDim(games, List.of(),
+                List.of("Strategy", "Roguelike"));
+
+        // RPG = 0.5 * 1.0 (only rated genre, full share) + 0.5 * 0 (not in prior) = 0.5.
+        // Strategy = 0.5 * 0 + 0.5 * 0.5 (half of two-prefs uniform) = 0.25.
+        // Roguelike = same as Strategy = 0.25.
+        assertThat(profile.genres()).containsOnlyKeys("RPG", "Strategy", "Roguelike");
+        assertThat(profile.genres().get("RPG")).isCloseTo(0.5, within(0.001));
+        assertThat(profile.genres().get("Strategy")).isCloseTo(0.25, within(0.001));
+        assertThat(profile.genres().get("Roguelike")).isCloseTo(0.25, within(0.001));
+    }
+
+    @Test
+    void buildMultiDim_preference_for_genre_with_no_ratings_appears_with_prior_weight() {
+        // 2 rated RPG games, alpha = 2/10 = 0.2.
+        UserProfile profile = UserProfileBuilder.buildMultiDim(
+                List.of(ratedGame(1, 9, "RPG"), ratedGame(2, 9, "RPG")),
+                List.of(),
+                List.of("Strategy"));
+
+        // Strategy contributed only by prior: (1 - 0.2) * 1.0 (only-pref share) = 0.8.
+        assertThat(profile.genres().get("Strategy")).isCloseTo(0.8, within(0.001));
+    }
+
+    @Test
+    void buildMultiDim_rated_genre_with_no_preference_appears_with_evidence_weight() {
+        // 2 rated RPG, alpha = 0.2. Prior = ["Strategy"].
+        UserProfile profile = UserProfileBuilder.buildMultiDim(
+                List.of(ratedGame(1, 9, "RPG"), ratedGame(2, 9, "RPG")),
+                List.of(),
+                List.of("Strategy"));
+
+        // RPG contributed only by ratings: 0.2 * 1.0 (only-rated share) = 0.2.
+        assertThat(profile.genres().get("RPG")).isCloseTo(0.2, within(0.001));
+    }
+
+    @Test
+    void buildMultiDim_blank_and_null_preference_names_are_dropped() {
+        UserProfile profile = UserProfileBuilder.buildMultiDim(List.of(), List.of(),
+                java.util.Arrays.asList("RPG", " ", "", null, "Strategy"));
+
+        assertThat(profile.genres()).containsOnlyKeys("RPG", "Strategy");
+        assertThat(profile.genres().get("RPG")).isCloseTo(0.5, within(0.001));
+        assertThat(profile.genres().get("Strategy")).isCloseTo(0.5, within(0.001));
+    }
+
+    @Test
+    void buildMultiDim_duplicate_preference_names_are_deduped_after_trim() {
+        UserProfile profile = UserProfileBuilder.buildMultiDim(List.of(), List.of(),
+                List.of("RPG", " RPG ", "Strategy"));
+
+        // Deduped to {RPG, Strategy}, each 1/2.
+        assertThat(profile.genres()).containsOnlyKeys("RPG", "Strategy");
+        assertThat(profile.genres().get("RPG")).isCloseTo(0.5, within(0.001));
+    }
+
     private UserPlatformDTO platformDto(String name, boolean isPrimary) {
         UserPlatformDTO p = new UserPlatformDTO();
         p.setPlatformName(name);
