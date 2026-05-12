@@ -14,12 +14,15 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -42,7 +45,7 @@ class DashboardServiceTest {
 
     @Test
     void getDashboard_returns_all_three_sections() {
-        when(recommendationService.getPersonalized("token", 10)).thenReturn(List.of(reco("Game A")));
+        when(recommendationService.getPersonalized(eq("token"), eq(10), isNull())).thenReturn(List.of(reco("Game A")));
         when(wildCardService.getWildCard("token", 5)).thenReturn(List.of(reco("Wild Game")));
         when(libraryServiceClient.getGames("token")).thenReturn(List.of());
 
@@ -55,7 +58,7 @@ class DashboardServiceTest {
 
     @Test
     void getDashboard_returns_empty_because_you_liked_when_no_high_rated_games() {
-        when(recommendationService.getPersonalized("token", 10)).thenReturn(List.of());
+        when(recommendationService.getPersonalized(eq("token"), eq(10), isNull())).thenReturn(List.of());
         when(wildCardService.getWildCard("token", 5)).thenReturn(List.of());
         when(libraryServiceClient.getGames("token")).thenReturn(List.of(lowRatedGame(1, 5)));
 
@@ -66,7 +69,7 @@ class DashboardServiceTest {
 
     @Test
     void getDashboard_populates_because_you_liked_from_high_rated_seeds() {
-        when(recommendationService.getPersonalized("token", 10)).thenReturn(List.of());
+        when(recommendationService.getPersonalized(eq("token"), eq(10), isNull())).thenReturn(List.of());
         when(wildCardService.getWildCard("token", 5)).thenReturn(List.of());
         when(libraryServiceClient.getGames("token")).thenReturn(List.of(highRatedGame(1, "The Witcher 3", 9)));
         when(similarGameService.getBecauseYouLiked(eq(1), eq("token"), anyInt()))
@@ -84,7 +87,7 @@ class DashboardServiceTest {
     void getDashboard_skips_failed_seed_instead_of_crashing() {
         // Only 1 seed is picked (limit 1 after shuffle). If that seed's similar-game call
         // throws, becauseYouLiked must be empty — not an exception.
-        when(recommendationService.getPersonalized("token", 10)).thenReturn(List.of());
+        when(recommendationService.getPersonalized(eq("token"), eq(10), isNull())).thenReturn(List.of());
         when(wildCardService.getWildCard("token", 5)).thenReturn(List.of());
         when(libraryServiceClient.getGames("token")).thenReturn(List.of(
                 highRatedGame(1, "Witcher 3", 9)
@@ -99,7 +102,7 @@ class DashboardServiceTest {
 
     @Test
     void getDashboard_returns_partial_dashboard_when_personalized_fails() {
-        when(recommendationService.getPersonalized("token", 10))
+        when(recommendationService.getPersonalized(eq("token"), eq(10), isNull()))
                 .thenThrow(new ServiceCommunicationException("Game Service unavailable", null));
         when(wildCardService.getWildCard("token", 5)).thenReturn(List.of(reco("Wild Game")));
         when(libraryServiceClient.getGames("token")).thenReturn(List.of());
@@ -112,7 +115,7 @@ class DashboardServiceTest {
 
     @Test
     void getDashboard_returns_partial_dashboard_when_wildcard_fails() {
-        when(recommendationService.getPersonalized("token", 10)).thenReturn(List.of(reco("Game A")));
+        when(recommendationService.getPersonalized(eq("token"), eq(10), isNull())).thenReturn(List.of(reco("Game A")));
         when(wildCardService.getWildCard("token", 5))
                 .thenThrow(new ServiceCommunicationException("Game Service unavailable", null));
         when(libraryServiceClient.getGames("token")).thenReturn(List.of());
@@ -125,7 +128,7 @@ class DashboardServiceTest {
 
     @Test
     void getDashboard_excludes_seeds_with_null_igdb_id() {
-        when(recommendationService.getPersonalized("token", 10)).thenReturn(List.of());
+        when(recommendationService.getPersonalized(eq("token"), eq(10), isNull())).thenReturn(List.of());
         when(wildCardService.getWildCard("token", 5)).thenReturn(List.of());
 
         UserGameDTO gameWithNullId = new UserGameDTO();
@@ -138,6 +141,19 @@ class DashboardServiceTest {
         DashboardDTO result = dashboardService.getDashboard("token");
 
         assertThat(result.getBecauseYouLiked()).isEmpty();
+    }
+
+    @Test
+    void getDashboard_forwards_recently_shown_ids_to_personalized_section() {
+        Set<Integer> recent = Set.of(101, 202, 303);
+        when(recommendationService.getPersonalized(eq("token"), eq(10), eq(recent))).thenReturn(List.of(reco("Game A")));
+        when(wildCardService.getWildCard("token", 5)).thenReturn(List.of());
+        when(libraryServiceClient.getGames("token")).thenReturn(List.of());
+
+        DashboardDTO result = dashboardService.getDashboard("token", recent);
+
+        assertThat(result.getRecommendations()).hasSize(1);
+        verify(recommendationService).getPersonalized(eq("token"), eq(10), eq(recent));
     }
 
     private RecommendationDTO reco(String name) {

@@ -27,14 +27,11 @@ public class UserProfileBuilder {
      */
     public static final double PRIMARY_PLATFORM_BOOST_MULTIPLIER = 2.0;
 
-    /**
-     * Number of rated games at which the genre-preference cold-start prior is fully discounted
-     * in favor of accumulated rating evidence. Below this count, the user's onboarding-set
-     * preferences blend in with weight {@code (1 - n / CAP)}; at or above this count,
-     * preferences are ignored entirely. Set to 0 to short-circuit the blend (always pure
-     * ratings) — preserves prior behavior end-to-end.
-     */
+    /** Rated-count at which preference prior decays to its floor weight. Set to 0 for ratings-only. */
     public static final int PREFERENCE_BLEND_CAP = 10;
+
+    /** Permanent floor weight of the declared-preference prior. Set to 0.0 for legacy no-floor behaviour. */
+    public static final double PREFERENCE_BLEND_FLOOR = 0.15;
 
     private UserProfileBuilder() {}
 
@@ -90,62 +87,81 @@ public class UserProfileBuilder {
         return buildMultiDim(ratedGames, userPlatforms, List.of());
     }
 
+    /** Three-arg overload, delegates with empty tag-preferences. */
+    public static UserProfile buildMultiDim(List<UserGameDTO> ratedGames,
+                                             List<UserPlatformDTO> userPlatforms,
+                                             List<String> genrePreferences) {
+        return buildMultiDim(ratedGames, userPlatforms, genrePreferences, List.of());
+    }
+
     /**
-     * Multi-dim profile with primary-platform amplification and a cold-start genre-preference
-     * blend. The genres dimension blends two unit-normalised sources via Bayesian-style decay:
-     * a uniform prior derived from the user's onboarding-set preferences (each preferred genre
-     * contributes {@code 1/k}), and the rating-weighted evidence accumulated from the user's
-     * actual ratings. The blend coefficient is {@code α = min(1, n / PREFERENCE_BLEND_CAP)}
-     * where {@code n} is the rated-game count, so the prior dominates at zero ratings, the
-     * evidence dominates at {@code PREFERENCE_BLEND_CAP} ratings or more, and the contribution
-     * scales linearly between. Theme, tag, and platform dimensions are unaffected by the prior.
-     * Pass an empty {@code preferences} list (or use the two-arg overload) to skip the blend.
+     * Multi-dim profile with primary-platform amplification and cold-start blends for the genre
+     * and tag dimensions. Each blended dimension linearly combines a unit-normalised uniform
+     * prior (declared preferences) with the unit-normalised rating evidence using coefficient
+     * {@code α = min(1 - FLOOR, n / CAP)}. Theme and platform dimensions are not blended.
      */
     public static UserProfile buildMultiDim(List<UserGameDTO> ratedGames,
                                              List<UserPlatformDTO> userPlatforms,
-                                             List<String> preferences) {
+                                             List<String> genrePreferences,
+                                             List<String> tagPreferences) {
         boolean hasRated = ratedGames != null && !ratedGames.isEmpty();
-        boolean hasPrefs = preferences != null && !preferences.isEmpty();
+        boolean hasGenrePrefs = genrePreferences != null && !genrePreferences.isEmpty();
+        boolean hasTagPrefs = tagPreferences != null && !tagPreferences.isEmpty();
 
-        if (!hasRated && !hasPrefs) {
+        if (!hasRated && !hasGenrePrefs && !hasTagPrefs) {
             return new UserProfile(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>(), 0);
         }
 
-        Map<String, Double> rawGenres = hasRated ? accumulate(ratedGames, UserGameDTO::getGenres) : new HashMap<>();
-        Map<String, Double> themes = hasRated ? accumulate(ratedGames, UserGameDTO::getThemes) : new HashMap<>();
-        Map<String, Double> tags = hasRated ? accumulate(ratedGames, UserGameDTO::getTags) : new HashMap<>();
+        int ratedCount = ratedGames == null ? 0 : ratedGames.size();
 
-        Map<String, Double> genres = hasPrefs
-                ? blendGenres(rawGenres, preferences, ratedGames == null ? 0 : ratedGames.size())
+        Map<String, Double> rawGenres = hasRated ? accumulate(ratedGames, UserGameDTO::getGenres) : new HashMap<>();
+        Map<String, Double> rawTags = hasRated ? accumulate(ratedGames, UserGameDTO::getTags) : new HashMap<>();
+        Map<String, Double> themes = hasRated ? accumulate(ratedGames, UserGameDTO::getThemes) : new HashMap<>();
+
+        Map<String, Double> genres = hasGenrePrefs
+                ? blendGenres(rawGenres, genrePreferences, ratedCount)
                 : rawGenres;
+
+        Map<String, Double> tags = hasTagPrefs
+                ? blendTags(rawTags, tagPreferences, ratedCount)
+                : rawTags;
 
         Map<String, Double> rawPlatforms = hasRated ? accumulatePlatform(ratedGames) : new HashMap<>();
         applyPrimaryBoost(rawPlatforms, userPlatforms);
         Map<String, Double> platforms = sqrtNormalise(rawPlatforms);
 
-        return new UserProfile(genres, themes, tags, platforms, ratedGames == null ? 0 : ratedGames.size());
+        return new UserProfile(genres, themes, tags, platforms, ratedCount);
     }
 
-    /**
-     * Bayesian-style decay of the cold-start genre prior against accumulated rating evidence.
-     * Both inputs are normalised to a unit simplex before linear combination so the alpha
-     * weight means what it says. Empty rating evidence ({@code n = 0}) returns the pure
-     * uniform prior; {@code n &gt;= PREFERENCE_BLEND_CAP} returns the pure rating evidence;
-     * intermediate counts blend linearly. Returns an empty map when both inputs are empty.
-     */
+    /** Thin alias for direct unit-test access. */
     static Map<String, Double> blendGenres(Map<String, Double> ratingGenres,
                                             List<String> preferences,
                                             int ratedCount) {
-        Map<String, Double> ratingNorm = normaliseToUnit(ratingGenres);
+        return blendWithPrior(ratingGenres, preferences, ratedCount);
+    }
+
+    /** Thin alias for direct unit-test access. */
+    static Map<String, Double> blendTags(Map<String, Double> ratingTags,
+                                          List<String> preferences,
+                                          int ratedCount) {
+        return blendWithPrior(ratingTags, preferences, ratedCount);
+    }
+
+    /** Linearly combines unit-normalised rating evidence with a uniform preference prior. */
+    private static Map<String, Double> blendWithPrior(Map<String, Double> ratingWeights,
+                                                       List<String> preferences,
+                                                       int ratedCount) {
+        Map<String, Double> ratingNorm = normaliseToUnit(ratingWeights);
         Map<String, Double> preferenceNorm = uniformOver(preferences);
 
         if (ratingNorm.isEmpty() && preferenceNorm.isEmpty()) {
             return new HashMap<>();
         }
 
+        double alphaCap = 1.0 - PREFERENCE_BLEND_FLOOR;
         double alpha = PREFERENCE_BLEND_CAP <= 0
                 ? 1.0
-                : Math.min(1.0, (double) ratedCount / (double) PREFERENCE_BLEND_CAP);
+                : Math.min(alphaCap, (double) ratedCount / (double) PREFERENCE_BLEND_CAP);
 
         Set<String> keys = new HashSet<>();
         keys.addAll(ratingNorm.keySet());

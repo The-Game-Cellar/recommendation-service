@@ -4,6 +4,7 @@ import com.thegamecellar.recommendationservice.exception.ServiceCommunicationExc
 import com.thegamecellar.recommendationservice.model.dto.library.UserGameDTO;
 import com.thegamecellar.recommendationservice.model.dto.library.UserGenrePreferenceDTO;
 import com.thegamecellar.recommendationservice.model.dto.library.UserPlatformDTO;
+import com.thegamecellar.recommendationservice.model.dto.library.UserTagPreferenceDTO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
@@ -45,13 +46,13 @@ public class LibraryServiceClient {
             return Arrays.asList(response.getBody());
         } catch (HttpClientErrorException ex) {
             if (ex.getStatusCode().value() == 401 || ex.getStatusCode().value() == 403) {
-                log.error("Library Service auth error (games): {} — JWT not forwarded correctly", ex.getStatusCode());
+                log.error("Library Service auth error (games): {},JWT not forwarded correctly", ex.getStatusCode());
                 throw new ServiceCommunicationException("Library Service auth error: " + ex.getStatusCode(), ex);
             }
-            log.warn("Library Service error (games): {} — returning empty list", ex.getMessage());
+            log.warn("Library Service error (games): {},returning empty list", ex.getMessage());
             return Collections.emptyList();
         } catch (RestClientException ex) {
-            log.warn("Library Service unavailable (games): {} — returning empty list", ex.getMessage());
+            log.warn("Library Service unavailable (games): {},returning empty list", ex.getMessage());
             return Collections.emptyList();
         }
     }
@@ -70,13 +71,13 @@ public class LibraryServiceClient {
             return Arrays.asList(response.getBody());
         } catch (HttpClientErrorException ex) {
             if (ex.getStatusCode().value() == 401 || ex.getStatusCode().value() == 403) {
-                log.error("Library Service auth error (platforms): {} — JWT not forwarded correctly", ex.getStatusCode());
+                log.error("Library Service auth error (platforms): {},JWT not forwarded correctly", ex.getStatusCode());
                 throw new ServiceCommunicationException("Library Service auth error: " + ex.getStatusCode(), ex);
             }
-            log.warn("Library Service error (platforms): {} — returning empty list", ex.getMessage());
+            log.warn("Library Service error (platforms): {},returning empty list", ex.getMessage());
             return Collections.emptyList();
         } catch (RestClientException ex) {
-            log.warn("Library Service unavailable (platforms): {} — returning empty list", ex.getMessage());
+            log.warn("Library Service unavailable (platforms): {},returning empty list", ex.getMessage());
             return Collections.emptyList();
         }
     }
@@ -85,7 +86,7 @@ public class LibraryServiceClient {
      * Returns the user's onboarding-set genre preferences as a flat list of names. Used as a
      * cold-start prior in {@code UserProfileBuilder} that decays as the user accumulates
      * actual ratings. Returns an empty list when the endpoint is missing, the user has no
-     * preferences, or the call fails — never null.
+     * preferences, or the call fails,never null.
      */
     public List<String> getGenrePreferences(String bearerToken) {
         try {
@@ -104,13 +105,42 @@ public class LibraryServiceClient {
                     .toList();
         } catch (HttpClientErrorException ex) {
             if (ex.getStatusCode().value() == 401 || ex.getStatusCode().value() == 403) {
-                log.error("Library Service auth error (genre-preferences): {} — JWT not forwarded correctly", ex.getStatusCode());
+                log.error("Library Service auth error (genre-preferences): {},JWT not forwarded correctly", ex.getStatusCode());
                 throw new ServiceCommunicationException("Library Service auth error: " + ex.getStatusCode(), ex);
             }
-            log.warn("Library Service error (genre-preferences): {} — returning empty list", ex.getMessage());
+            log.warn("Library Service error (genre-preferences): {},returning empty list", ex.getMessage());
             return Collections.emptyList();
         } catch (RestClientException ex) {
-            log.warn("Library Service unavailable (genre-preferences): {} — returning empty list", ex.getMessage());
+            log.warn("Library Service unavailable (genre-preferences): {},returning empty list", ex.getMessage());
+            return Collections.emptyList();
+        }
+    }
+
+    /** Tag-preference fetch, mirrors {@link #getGenrePreferences(String)}. Empty list on error, never null. */
+    public List<String> getTagPreferences(String bearerToken) {
+        try {
+            ResponseEntity<UserTagPreferenceDTO[]> response = restTemplate.exchange(
+                    libraryServiceUrl + "/api/v1/library/tag-preferences",
+                    HttpMethod.GET,
+                    buildRequest(bearerToken),
+                    UserTagPreferenceDTO[].class
+            );
+            if (response.getBody() == null) {
+                return Collections.emptyList();
+            }
+            return Arrays.stream(response.getBody())
+                    .map(UserTagPreferenceDTO::getTagName)
+                    .filter(name -> name != null && !name.isBlank())
+                    .toList();
+        } catch (HttpClientErrorException ex) {
+            if (ex.getStatusCode().value() == 401 || ex.getStatusCode().value() == 403) {
+                log.error("Library Service auth error (tag-preferences): {},JWT not forwarded correctly", ex.getStatusCode());
+                throw new ServiceCommunicationException("Library Service auth error: " + ex.getStatusCode(), ex);
+            }
+            log.warn("Library Service error (tag-preferences): {},returning empty list", ex.getMessage());
+            return Collections.emptyList();
+        } catch (RestClientException ex) {
+            log.warn("Library Service unavailable (tag-preferences): {},returning empty list", ex.getMessage());
             return Collections.emptyList();
         }
     }

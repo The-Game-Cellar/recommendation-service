@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 
 @Slf4j
 @Service
@@ -23,9 +24,18 @@ public class DashboardService {
     private final LibraryServiceClient libraryServiceClient;
 
     public DashboardDTO getDashboard(String bearerToken) {
+        return getDashboard(bearerToken, null);
+    }
+
+    /**
+     * Recently-shown ids feed the soft score penalty in the personalized section only. Wild Card
+     * is already random-per-call and Because You Liked is seed-driven, so neither benefits from
+     * the same recency input and they intentionally ignore it.
+     */
+    public DashboardDTO getDashboard(String bearerToken, Set<Integer> recentlyShownIds) {
         List<RecommendationDTO> recommendations;
         try {
-            recommendations = recommendationService.getPersonalized(bearerToken, 10);
+            recommendations = recommendationService.getPersonalized(bearerToken, 10, recentlyShownIds);
         } catch (Exception ex) {
             log.warn("Personalized recommendations failed, returning empty: {}", ex.getMessage());
             recommendations = Collections.emptyList();
