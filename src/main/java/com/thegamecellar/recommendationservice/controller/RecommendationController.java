@@ -1,6 +1,7 @@
 package com.thegamecellar.recommendationservice.controller;
 
 import com.thegamecellar.recommendationservice.model.dto.DashboardDTO;
+import com.thegamecellar.recommendationservice.model.dto.DashboardRequest;
 import com.thegamecellar.recommendationservice.model.dto.GroupedRecommendationsResponse;
 import com.thegamecellar.recommendationservice.model.dto.GroupedRequest;
 import com.thegamecellar.recommendationservice.model.dto.PersonalizedRequest;
@@ -66,7 +67,7 @@ public class RecommendationController {
     @PostMapping("/personalized/grouped")
     public ResponseEntity<GroupedRecommendationsResponse> getPersonalizedGrouped(
             Authentication authentication,
-            @RequestBody(required = false) GroupedRequest request) {
+            @Valid @RequestBody(required = false) GroupedRequest request) {
         String token = JwtUtils.getBearerToken(authentication);
         Set<Integer> recent = (request == null || request.getRecentlyShownIds() == null)
                 ? null
@@ -100,9 +101,20 @@ public class RecommendationController {
         return ResponseEntity.ok(similarGameService.getBecauseYouLiked(gameId, token, limit));
     }
 
-    @GetMapping("/dashboard")
-    public ResponseEntity<DashboardDTO> getDashboard(Authentication authentication) {
+    /**
+     * POST rather than GET for the same reason as {@code /personalized}: the
+     * {@code recentlyShownIds} list grows uncapped across a session and would routinely exceed
+     * Tomcat's default header buffer if shipped as a query string. Body is optional so cold-start
+     * callers (initial mount, no shown ids yet) can omit it.
+     */
+    @PostMapping("/dashboard")
+    public ResponseEntity<DashboardDTO> getDashboard(
+            Authentication authentication,
+            @Valid @RequestBody(required = false) DashboardRequest request) {
         String token = JwtUtils.getBearerToken(authentication);
-        return ResponseEntity.ok(dashboardService.getDashboard(token));
+        Set<Integer> recent = (request == null || request.getRecentlyShownIds() == null)
+                ? null
+                : new HashSet<>(request.getRecentlyShownIds());
+        return ResponseEntity.ok(dashboardService.getDashboard(token, recent));
     }
 }

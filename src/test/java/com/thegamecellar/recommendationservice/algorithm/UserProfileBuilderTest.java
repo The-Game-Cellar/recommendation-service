@@ -482,8 +482,9 @@ class UserProfileBuilderTest {
     }
 
     @Test
-    void buildMultiDim_preferences_and_rated_at_cap_preferences_ignored() {
-        // 10 rated games hits PREFERENCE_BLEND_CAP exactly — alpha = 1.0, prior contribution 0.
+    void buildMultiDim_preferences_and_rated_at_cap_preferences_retain_floor() {
+        // 10 rated games hits PREFERENCE_BLEND_CAP exactly — alpha caps at (1 - FLOOR) = 0.85,
+        // so the prior retains FLOOR = 0.15 of mass instead of being discarded entirely.
         List<UserGameDTO> games = List.of(
                 ratedGame(1, 9, "RPG"), ratedGame(2, 9, "RPG"), ratedGame(3, 9, "RPG"),
                 ratedGame(4, 9, "RPG"), ratedGame(5, 9, "RPG"), ratedGame(6, 9, "RPG"),
@@ -494,10 +495,102 @@ class UserProfileBuilderTest {
         UserProfile profile = UserProfileBuilder.buildMultiDim(games, List.of(),
                 List.of("Strategy", "Roguelike"));
 
-        // RPG dominates from ratings; Strategy + Roguelike (preferences) absent because
-        // alpha = 1.0 means (1 - alpha) * preferenceShare = 0.
-        assertThat(profile.genres()).containsOnlyKeys("RPG");
-        assertThat(profile.genres().get("RPG")).isCloseTo(1.0, within(0.001));
+        // RPG = 0.85 * 1.0 (full evidence share) + 0.15 * 0 (not in prior) = 0.85.
+        // Strategy = 0.85 * 0 + 0.15 * 0.5 (half of two-prefs uniform) = 0.075.
+        // Roguelike same as Strategy = 0.075.
+        assertThat(profile.genres()).containsOnlyKeys("RPG", "Strategy", "Roguelike");
+        assertThat(profile.genres().get("RPG")).isCloseTo(0.85, within(0.001));
+        assertThat(profile.genres().get("Strategy")).isCloseTo(0.075, within(0.001));
+        assertThat(profile.genres().get("Roguelike")).isCloseTo(0.075, within(0.001));
+    }
+
+    @Test
+    void buildMultiDim_preferences_far_above_cap_still_retain_floor() {
+        // 100 rated games — well past PREFERENCE_BLEND_CAP. Floor still active, so prior
+        // contribution stays at exactly FLOOR = 0.15 regardless of how many ratings pile up.
+        List<UserGameDTO> games = new java.util.ArrayList<>();
+        for (int i = 1; i <= 100; i++) {
+            games.add(ratedGame(i, 9, "RPG"));
+        }
+
+        UserProfile profile = UserProfileBuilder.buildMultiDim(games, List.of(),
+                List.of("Strategy"));
+
+        assertThat(profile.genres().get("RPG")).isCloseTo(0.85, within(0.001));
+        assertThat(profile.genres().get("Strategy")).isCloseTo(0.15, within(0.001));
+    }
+
+    @Test
+    void buildMultiDim_tag_preferences_blended_with_rating_evidence() {
+        // Mirror of the genre blend, exercised on the tag dimension via the four-arg overload.
+        // 5 rated games puts alpha at 0.5; tag prior "cozy" should contribute alongside the
+        // rated tag "atmospheric".
+        List<UserGameDTO> games = List.of(
+                ratedGameWithTag(1, 9, "Action", "atmospheric"),
+                ratedGameWithTag(2, 9, "Action", "atmospheric"),
+                ratedGameWithTag(3, 9, "Action", "atmospheric"),
+                ratedGameWithTag(4, 9, "Action", "atmospheric"),
+                ratedGameWithTag(5, 9, "Action", "atmospheric")
+        );
+
+        UserProfile profile = UserProfileBuilder.buildMultiDim(games, List.of(),
+                List.of(), List.of("cozy"));
+
+        // atmospheric = 0.5 * 1.0 + 0.5 * 0 = 0.5.
+        // cozy = 0.5 * 0 + 0.5 * 1.0 = 0.5.
+        assertThat(profile.tags()).containsOnlyKeys("atmospheric", "cozy");
+        assertThat(profile.tags().get("atmospheric")).isCloseTo(0.5, within(0.001));
+        assertThat(profile.tags().get("cozy")).isCloseTo(0.5, within(0.001));
+    }
+
+    @Test
+    void buildMultiDim_tag_preferences_alone_with_no_ratings_form_uniform_prior() {
+        UserProfile profile = UserProfileBuilder.buildMultiDim(List.of(), List.of(),
+                List.of(), List.of("cozy", "atmospheric", "story rich"));
+
+        assertThat(profile.tags()).hasSize(3);
+        assertThat(profile.tags().get("cozy")).isCloseTo(1.0 / 3.0, within(0.001));
+        assertThat(profile.tags().get("atmospheric")).isCloseTo(1.0 / 3.0, within(0.001));
+        assertThat(profile.tags().get("story rich")).isCloseTo(1.0 / 3.0, within(0.001));
+    }
+
+    @Test
+    void buildMultiDim_tag_preferences_at_cap_retain_floor() {
+        // Mirror of the genre at-cap-floor test for the tag dimension. 10 ratings of a single
+        // tag put alpha at the cap (0.85); declared tag "cozy" survives with weight 0.15.
+        List<UserGameDTO> games = new java.util.ArrayList<>();
+        for (int i = 1; i <= 10; i++) {
+            games.add(ratedGameWithTag(i, 9, "Action", "atmospheric"));
+        }
+
+        UserProfile profile = UserProfileBuilder.buildMultiDim(games, List.of(),
+                List.of(), List.of("cozy"));
+
+        assertThat(profile.tags().get("atmospheric")).isCloseTo(0.85, within(0.001));
+        assertThat(profile.tags().get("cozy")).isCloseTo(0.15, within(0.001));
+    }
+
+    @Test
+    void buildMultiDim_four_arg_with_empty_tag_prefs_equivalent_to_three_arg() {
+        // The four-arg overload with an empty tagPreferences list must produce the same
+        // tag dimension as the three-arg overload — guards against accidental behavioural
+        // divergence between the overloads.
+        List<UserGameDTO> games = List.of(
+                ratedGameWithTag(1, 9, "RPG", "story rich"),
+                ratedGameWithTag(2, 8, "RPG", "atmospheric")
+        );
+
+        UserProfile threeArg = UserProfileBuilder.buildMultiDim(games, List.of(), List.of());
+        UserProfile fourArg = UserProfileBuilder.buildMultiDim(games, List.of(), List.of(), List.of());
+
+        assertThat(fourArg.tags()).isEqualTo(threeArg.tags());
+        assertThat(fourArg.genres()).isEqualTo(threeArg.genres());
+    }
+
+    private UserGameDTO ratedGameWithTag(int igdbId, int rating, String genre, String tag) {
+        UserGameDTO g = ratedGame(igdbId, rating, genre);
+        g.setTags(List.of(tag));
+        return g;
     }
 
     @Test
