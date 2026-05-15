@@ -44,7 +44,8 @@ public class GameServiceClient {
             log.info("Game {} not found in Game Service (404) — returning null for graceful skip", igdbId);
             return null;
         } catch (RestClientException ex) {
-            log.warn("Failed to fetch game {} from Game Service: {}", igdbId, ex.getMessage());
+            String statusHint = (ex instanceof HttpClientErrorException hce) ? " " + hce.getStatusCode() : "";
+            log.warn("Failed to fetch game {} from Game Service: {}{}", igdbId, ex.getClass().getSimpleName(), statusHint);
             throw new ServiceCommunicationException("Game Service unavailable", ex);
         }
     }
@@ -68,7 +69,8 @@ public class GameServiceClient {
             }
             return body.getGames();
         } catch (RestClientException ex) {
-            log.warn("Failed to fetch popular games from Game Service: {}", ex.getMessage());
+            String statusHint = (ex instanceof HttpClientErrorException hce) ? " " + hce.getStatusCode() : "";
+            log.warn("Failed to fetch popular games from Game Service: {}{}", ex.getClass().getSimpleName(), statusHint);
             return Collections.emptyList();
         }
     }
@@ -100,7 +102,8 @@ public class GameServiceClient {
             if (body == null || body.getGames() == null) return Collections.emptyList();
             return body.getGames();
         } catch (RestClientException ex) {
-            log.warn("Failed to search games by genre '{}' from Game Service: {}", genre, ex.getMessage());
+            String statusHint = (ex instanceof HttpClientErrorException hce) ? " " + hce.getStatusCode() : "";
+            log.warn("Failed to search games by genre '{}' from Game Service: {}{}", genre, ex.getClass().getSimpleName(), statusHint);
             return Collections.emptyList();
         }
     }
@@ -137,7 +140,8 @@ public class GameServiceClient {
             if (body == null || body.getGames() == null) return Collections.emptyList();
             return body.getGames();
         } catch (RestClientException ex) {
-            log.warn("Failed quality random fetch for genre '{}' from Game Service: {}", genre, ex.getMessage());
+            String statusHint = (ex instanceof HttpClientErrorException hce) ? " " + hce.getStatusCode() : "";
+            log.warn("Failed quality random fetch for genre '{}' from Game Service: {}{}", genre, ex.getClass().getSimpleName(), statusHint);
             return Collections.emptyList();
         }
     }
@@ -160,7 +164,8 @@ public class GameServiceClient {
             }
             return body.getGames();
         } catch (RestClientException ex) {
-            log.warn("Failed to fetch random games from cache: {}", ex.getMessage());
+            String statusHint = (ex instanceof HttpClientErrorException hce) ? " " + hce.getStatusCode() : "";
+            log.warn("Failed to fetch random games from cache: {}{}", ex.getClass().getSimpleName(), statusHint);
             return Collections.emptyList();
         }
     }
