@@ -37,7 +37,7 @@ public class DashboardService {
         try {
             recommendations = recommendationService.getPersonalized(bearerToken, 10, recentlyShownIds);
         } catch (Exception ex) {
-            log.warn("Personalized recommendations failed, returning empty: {}", ex.getMessage());
+            log.warn("Personalized recommendations failed, returning empty: {}", ex.getClass().getSimpleName());
             recommendations = Collections.emptyList();
         }
 
@@ -45,7 +45,7 @@ public class DashboardService {
         try {
             wildcard = wildCardService.getWildCard(bearerToken, 5);
         } catch (Exception ex) {
-            log.warn("WildCard failed, returning empty: {}", ex.getMessage());
+            log.warn("WildCard failed, returning empty: {}", ex.getClass().getSimpleName());
             wildcard = Collections.emptyList();
         }
 
