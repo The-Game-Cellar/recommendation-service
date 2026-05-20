@@ -34,6 +34,13 @@ public class SimilarityScorer {
      */
     public static final double EPSILON = 0.15;
 
+    /**
+     * Release-year boost coefficient. Matches {@link #EPSILON} so a release-year bucket match
+     * lifts a candidate by the same magnitude as a platform-profile match. Set to 0 to disable
+     * the entire release-year scoring layer without removing the data path.
+     */
+    public static final double RELEASE_YEAR_EPSILON = 0.15;
+
     private SimilarityScorer() {}
 
     public static double score(GameDTO candidate, Map<String, Double> genreProfile) {
@@ -129,6 +136,22 @@ public class SimilarityScorer {
      * intersection and don't pull the average down. Catalog platforms not in the profile are
      * skipped (they contribute nothing — neither boost nor penalty).
      */
+    /**
+     * Binary in/out release-year boost against the user's declared bucket picks. Classifies the
+     * candidate's release date into one of the five decade buckets via
+     * {@link UserProfileBuilder#releaseYearBucket(String)} and returns {@code 1.0} when that
+     * bucket is in {@code declaredBuckets}, else {@code 0.0}. The declared set is intentionally
+     * separate from the blended rating-evidence map so the boost only fires on user picks and
+     * does not leak through rating-evidence buckets a heavy-library user would otherwise
+     * inadvertently boost across the board.
+     */
+    public static double releaseYearBoost(GameDTO candidate, Set<String> declaredBuckets) {
+        if (candidate == null || declaredBuckets == null || declaredBuckets.isEmpty()) return 0.0;
+        String bucket = UserProfileBuilder.releaseYearBucket(candidate.getReleased());
+        if (bucket == null) return 0.0;
+        return declaredBuckets.contains(bucket) ? 1.0 : 0.0;
+    }
+
     public static double platformBoost(GameDTO candidate, Map<String, Double> profilePlatforms) {
         if (candidate == null || profilePlatforms == null || profilePlatforms.isEmpty()) return 0.0;
         List<String> candidatePlatforms = candidate.getPlatforms();

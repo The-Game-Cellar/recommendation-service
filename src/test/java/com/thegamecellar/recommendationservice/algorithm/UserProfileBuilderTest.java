@@ -684,4 +684,143 @@ class UserProfileBuilderTest {
         game.setPlatform(platform);
         return game;
     }
+
+    private UserGameDTO ratedWithRelease(int igdbId, int rating, String released) {
+        UserGameDTO game = new UserGameDTO();
+        game.setIgdbGameId(igdbId);
+        game.setRating(rating);
+        game.setReleased(released);
+        return game;
+    }
+
+    @Test
+    void releaseYearBucket_maps_decades_correctly() {
+        assertThat(UserProfileBuilder.releaseYearBucket("1985-07-15")).isEqualTo("Pre-1990");
+        assertThat(UserProfileBuilder.releaseYearBucket("1989-12-31")).isEqualTo("Pre-1990");
+        assertThat(UserProfileBuilder.releaseYearBucket("1990-01-01")).isEqualTo("1990s");
+        assertThat(UserProfileBuilder.releaseYearBucket("1999-12-31")).isEqualTo("1990s");
+        assertThat(UserProfileBuilder.releaseYearBucket("2005-06-12")).isEqualTo("2000s");
+        assertThat(UserProfileBuilder.releaseYearBucket("2015-05-19")).isEqualTo("2010s");
+        assertThat(UserProfileBuilder.releaseYearBucket("2020-01-01")).isEqualTo("2020s");
+        assertThat(UserProfileBuilder.releaseYearBucket("2099-12-31")).isEqualTo("2020s");
+    }
+
+    @Test
+    void releaseYearBucket_returns_null_for_null_blank_or_unparseable_input() {
+        assertThat(UserProfileBuilder.releaseYearBucket(null)).isNull();
+        assertThat(UserProfileBuilder.releaseYearBucket("")).isNull();
+        assertThat(UserProfileBuilder.releaseYearBucket("abc")).isNull();
+        assertThat(UserProfileBuilder.releaseYearBucket("not-a-date")).isNull();
+    }
+
+    @Test
+    void buildMultiDim_accumulates_release_year_evidence_from_rated_games() {
+        // Witcher 9★ (2015) → 2010s weight 4. Doom 8★ (2016) → 2010s weight 3. Elden 10★ (2022) → 2020s weight 5.
+        UserGameDTO witcher = ratedWithRelease(1, 9, "2015-05-19");
+        UserGameDTO doom = ratedWithRelease(2, 8, "2016-05-13");
+        UserGameDTO elden = ratedWithRelease(3, 10, "2022-02-25");
+
+        UserProfile profile = UserProfileBuilder.buildMultiDim(
+                List.of(witcher, doom, elden), List.of(), List.of(), List.of(), List.of());
+
+        assertThat(profile.releaseYears()).containsEntry("2010s", 7.0);
+        assertThat(profile.releaseYears()).containsEntry("2020s", 5.0);
+    }
+
+    @Test
+    void buildMultiDim_skips_null_release_dates_from_accumulator() {
+        UserGameDTO dated = ratedWithRelease(1, 9, "2015-05-19");
+        UserGameDTO undated = ratedWithRelease(2, 9, null);
+        UserGameDTO empty = ratedWithRelease(3, 9, "");
+
+        UserProfile profile = UserProfileBuilder.buildMultiDim(
+                List.of(dated, undated, empty), List.of(), List.of(), List.of(), List.of());
+
+        assertThat(profile.releaseYears()).containsOnlyKeys("2010s");
+        assertThat(profile.releaseYears().get("2010s")).isEqualTo(4.0);
+    }
+
+    @Test
+    void buildMultiDim_release_year_preferences_alone_form_uniform_prior() {
+        UserProfile profile = UserProfileBuilder.buildMultiDim(List.of(), List.of(),
+                List.of(), List.of(), List.of("1990s", "2010s", "2020s"));
+
+        assertThat(profile.releaseYears()).hasSize(3);
+        assertThat(profile.releaseYears().get("1990s")).isCloseTo(1.0 / 3.0, within(0.001));
+        assertThat(profile.releaseYears().get("2010s")).isCloseTo(1.0 / 3.0, within(0.001));
+        assertThat(profile.releaseYears().get("2020s")).isCloseTo(1.0 / 3.0, within(0.001));
+    }
+
+    @Test
+    void buildMultiDim_release_year_preferences_blended_halfway_with_evidence() {
+        // 5 rated games all in 2010s → alpha = 0.5. Pref = ["2020s"]. Evidence side fully 2010s,
+        // prior side fully 2020s. Blend: 2010s = 0.5, 2020s = 0.5.
+        List<UserGameDTO> games = List.of(
+                ratedWithRelease(1, 9, "2015-01-01"),
+                ratedWithRelease(2, 9, "2016-01-01"),
+                ratedWithRelease(3, 9, "2017-01-01"),
+                ratedWithRelease(4, 9, "2018-01-01"),
+                ratedWithRelease(5, 9, "2019-01-01")
+        );
+
+        UserProfile profile = UserProfileBuilder.buildMultiDim(games, List.of(),
+                List.of(), List.of(), List.of("2020s"));
+
+        assertThat(profile.releaseYears()).containsOnlyKeys("2010s", "2020s");
+        assertThat(profile.releaseYears().get("2010s")).isCloseTo(0.5, within(0.001));
+        assertThat(profile.releaseYears().get("2020s")).isCloseTo(0.5, within(0.001));
+    }
+
+    @Test
+    void buildMultiDim_release_year_preferences_at_cap_retain_floor() {
+        // 10 rated games all in 2010s → alpha caps at 0.85; prior retains 0.15.
+        List<UserGameDTO> games = new java.util.ArrayList<>();
+        for (int i = 1; i <= 10; i++) games.add(ratedWithRelease(i, 9, "2015-01-01"));
+
+        UserProfile profile = UserProfileBuilder.buildMultiDim(games, List.of(),
+                List.of(), List.of(), List.of("2020s"));
+
+        assertThat(profile.releaseYears().get("2010s")).isCloseTo(0.85, within(0.001));
+        assertThat(profile.releaseYears().get("2020s")).isCloseTo(0.15, within(0.001));
+    }
+
+    @Test
+    void buildMultiDim_five_arg_with_empty_release_year_prefs_equivalent_to_four_arg() {
+        // Equivalence guard between the four-arg shim and the five-arg overload when prefs empty.
+        List<UserGameDTO> games = List.of(
+                ratedWithRelease(1, 9, "2015-05-19"),
+                ratedWithRelease(2, 8, "2022-02-25")
+        );
+
+        UserProfile fourArg = UserProfileBuilder.buildMultiDim(games, List.of(), List.of(), List.of());
+        UserProfile fiveArg = UserProfileBuilder.buildMultiDim(games, List.of(), List.of(), List.of(), List.of());
+
+        assertThat(fiveArg.releaseYears()).isEqualTo(fourArg.releaseYears());
+        assertThat(fiveArg.genres()).isEqualTo(fourArg.genres());
+        assertThat(fiveArg.tags()).isEqualTo(fourArg.tags());
+    }
+
+    @Test
+    void buildMultiDim_release_year_no_ratings_no_prefs_empty_map() {
+        UserProfile profile = UserProfileBuilder.buildMultiDim(List.of(), List.of(),
+                List.of(), List.of(), List.of());
+
+        assertThat(profile.releaseYears()).isEmpty();
+        assertThat(profile.declaredReleaseYears()).isEmpty();
+        assertThat(profile.isEmpty()).isTrue();
+    }
+
+    @Test
+    void buildMultiDim_declaredReleaseYears_captures_trimmed_deduped_picks() {
+        // Declared set must contain exactly the user's picks (no rating-evidence leak).
+        // Trims whitespace, drops blanks / nulls, dedupes.
+        UserProfile profile = UserProfileBuilder.buildMultiDim(
+                List.of(ratedWithRelease(1, 9, "2015-05-19")),
+                List.of(), List.of(), List.of(),
+                java.util.Arrays.asList(" Pre-1990 ", "Pre-1990", "", null, "2000s"));
+
+        assertThat(profile.declaredReleaseYears()).containsExactlyInAnyOrder("Pre-1990", "2000s");
+        // Rating evidence still accumulated in releaseYears even though the bucket is not declared.
+        assertThat(profile.releaseYears()).containsKey("2010s");
+    }
 }
