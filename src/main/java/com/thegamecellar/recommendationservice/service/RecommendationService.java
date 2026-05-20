@@ -299,16 +299,18 @@ public class RecommendationService {
                 .map(UserPlatformDTO::getPlatformName)
                 .collect(Collectors.toSet());
 
-        // Declared preferences feed cold-start priors in the genre + tag dimensions; floor in
-        // UserProfileBuilder keeps a permanent slice of each even after rating evidence saturates.
+        // Declared preferences feed cold-start priors in the genre, tag and release-year
+        // dimensions; floor in UserProfileBuilder keeps a permanent slice of each even after
+        // rating evidence saturates.
         List<String> genrePreferences = Objects.requireNonNullElseGet(libraryServiceClient.getGenrePreferences(bearerToken), List::of);
         List<String> tagPreferences = Objects.requireNonNullElseGet(libraryServiceClient.getTagPreferences(bearerToken), List::of);
+        List<String> releaseYearPreferences = Objects.requireNonNullElseGet(libraryServiceClient.getReleaseYearPreferences(bearerToken), List::of);
 
         RecommendationTier tier = TierSelector.select(ratedGames.size());
 
         return switch (tier) {
-            case ONE -> getTier1(ratedGames, ownedGameIds, recentlyShown, userPlatforms, platformList, genrePreferences, tagPreferences, limit, bearerToken);
-            case TWO -> getTier2(ratedGames, ownedGameIds, recentlyShown, userPlatforms, platformList, genrePreferences, tagPreferences, limit, bearerToken);
+            case ONE -> getTier1(ratedGames, ownedGameIds, recentlyShown, userPlatforms, platformList, genrePreferences, tagPreferences, releaseYearPreferences, limit, bearerToken);
+            case TWO -> getTier2(ratedGames, ownedGameIds, recentlyShown, userPlatforms, platformList, genrePreferences, tagPreferences, releaseYearPreferences, limit, bearerToken);
             case THREE -> getTier3(ownedGameIds, recentlyShown, userPlatforms, limit, bearerToken);
         };
     }
@@ -320,9 +322,10 @@ public class RecommendationService {
                                               List<UserPlatformDTO> platformList,
                                               List<String> genrePreferences,
                                               List<String> tagPreferences,
+                                              List<String> releaseYearPreferences,
                                               int limit,
                                               String bearerToken) {
-        UserProfile profile = UserProfileBuilder.buildMultiDim(ratedGames, platformList, genrePreferences, tagPreferences);
+        UserProfile profile = UserProfileBuilder.buildMultiDim(ratedGames, platformList, genrePreferences, tagPreferences, releaseYearPreferences);
 
         // Weighted random sampling (Efraimidis-Spirakis A-Res) — higher-rated genres appear more
         // often but all genres have a chance, preserving variety across requests. Bound at 8 to
@@ -383,9 +386,10 @@ public class RecommendationService {
                                               List<UserPlatformDTO> platformList,
                                               List<String> genrePreferences,
                                               List<String> tagPreferences,
+                                              List<String> releaseYearPreferences,
                                               int limit,
                                               String bearerToken) {
-        UserProfile profile = UserProfileBuilder.buildMultiDim(ratedGames, platformList, genrePreferences, tagPreferences);
+        UserProfile profile = UserProfileBuilder.buildMultiDim(ratedGames, platformList, genrePreferences, tagPreferences, releaseYearPreferences);
         List<String> genresToSearch = UserProfileBuilder.sampleWeighted(profile.genres(), 5);
 
         List<GameDTO> candidates = new ArrayList<>();
@@ -536,6 +540,7 @@ public class RecommendationService {
         for (GameDTO candidate : candidates) {
             double score = SimilarityScorer.scoreMultiDim(candidate, profile)
                     + SimilarityScorer.EPSILON * SimilarityScorer.platformBoost(candidate, profile.platforms())
+                    + SimilarityScorer.RELEASE_YEAR_EPSILON * SimilarityScorer.releaseYearBoost(candidate, profile.declaredReleaseYears())
                     + ThreadLocalRandom.current().nextDouble() * SCORE_JITTER;
             if (recentlyShownIds.contains(candidate.getIgdbId())) {
                 score -= SHOWN_PENALTY;

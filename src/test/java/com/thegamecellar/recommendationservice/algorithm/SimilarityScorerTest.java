@@ -7,6 +7,7 @@ import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -83,7 +84,7 @@ class SimilarityScorerTest {
         candidate.setGenres(List.of("RPG"));
         candidate.setTags(List.of("souls-like"));
 
-        UserProfile empty = new UserProfile(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>(), 0);
+        UserProfile empty = new UserProfile(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>(), Set.of(), 0);
 
         assertThat(SimilarityScorer.scoreMultiDim(candidate, empty)).isEqualTo(0.0);
     }
@@ -93,7 +94,7 @@ class SimilarityScorerTest {
         Map<String, Double> genres = Map.of("RPG", 9.0);
         Map<String, Double> themes = Map.of("Fantasy", 9.0);
         Map<String, Double> tags = Map.of("souls-like", 9.0);
-        UserProfile profile = new UserProfile(genres, themes, tags, new HashMap<>(), 1);
+        UserProfile profile = new UserProfile(genres, themes, tags, new HashMap<>(), new HashMap<>(), Set.of(), 1);
 
         // Pure-genre match (no theme/tag overlap with profile)
         GameDTO genreOnly = new GameDTO();
@@ -117,7 +118,7 @@ class SimilarityScorerTest {
     @Test
     void scoreMultiDim_includes_rating_prior_for_highly_rated_candidates() {
         Map<String, Double> tags = Map.of("souls-like", 9.0);
-        UserProfile profile = new UserProfile(new HashMap<>(), new HashMap<>(), tags, new HashMap<>(), 1);
+        UserProfile profile = new UserProfile(new HashMap<>(), new HashMap<>(), tags, new HashMap<>(), new HashMap<>(), Set.of(), 1);
 
         GameDTO base = new GameDTO();
         base.setTags(List.of("souls-like"));
@@ -136,7 +137,7 @@ class SimilarityScorerTest {
     @Test
     void scoreMultiDim_clamps_rating_prior_for_invalid_ratings() {
         UserProfile profile = new UserProfile(
-                Map.of("RPG", 9.0), new HashMap<>(), new HashMap<>(), new HashMap<>(), 1);
+                Map.of("RPG", 9.0), new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>(), Set.of(), 1);
 
         GameDTO unrated = new GameDTO();
         unrated.setGenres(List.of("RPG"));
@@ -261,5 +262,37 @@ class SimilarityScorerTest {
         GameDTO game = new GameDTO();
         game.setGenres(List.of(genres));
         return game;
+    }
+
+    @Test
+    void releaseYearBoost_returns_one_on_declared_bucket_match() {
+        Set<String> declared = Set.of("2010s", "2020s");
+        GameDTO candidate = new GameDTO();
+        candidate.setReleased("2015-05-19");
+
+        assertThat(SimilarityScorer.releaseYearBoost(candidate, declared)).isEqualTo(1.0);
+    }
+
+    @Test
+    void releaseYearBoost_returns_zero_on_miss_or_null_input() {
+        Set<String> declared = Set.of("2020s");
+
+        // Different bucket
+        GameDTO outOfBucket = new GameDTO();
+        outOfBucket.setReleased("1995-08-01");
+        assertThat(SimilarityScorer.releaseYearBoost(outOfBucket, declared)).isEqualTo(0.0);
+
+        // Null candidate
+        assertThat(SimilarityScorer.releaseYearBoost(null, declared)).isEqualTo(0.0);
+
+        // Null released
+        GameDTO undated = new GameDTO();
+        undated.setReleased(null);
+        assertThat(SimilarityScorer.releaseYearBoost(undated, declared)).isEqualTo(0.0);
+
+        // Empty declared set
+        GameDTO dated = new GameDTO();
+        dated.setReleased("2024-01-01");
+        assertThat(SimilarityScorer.releaseYearBoost(dated, Set.of())).isEqualTo(0.0);
     }
 }

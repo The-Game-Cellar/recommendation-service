@@ -94,22 +94,34 @@ public class UserProfileBuilder {
         return buildMultiDim(ratedGames, userPlatforms, genrePreferences, List.of());
     }
 
-    /**
-     * Multi-dim profile with primary-platform amplification and cold-start blends for the genre
-     * and tag dimensions. Each blended dimension linearly combines a unit-normalised uniform
-     * prior (declared preferences) with the unit-normalised rating evidence using coefficient
-     * {@code α = min(1 - FLOOR, n / CAP)}. Theme and platform dimensions are not blended.
-     */
+    /** Four-arg overload, delegates with empty release-year-preferences. */
     public static UserProfile buildMultiDim(List<UserGameDTO> ratedGames,
                                              List<UserPlatformDTO> userPlatforms,
                                              List<String> genrePreferences,
                                              List<String> tagPreferences) {
+        return buildMultiDim(ratedGames, userPlatforms, genrePreferences, tagPreferences, List.of());
+    }
+
+    /**
+     * Multi-dim profile with primary-platform amplification and cold-start blends for the genre,
+     * tag and release-year dimensions. Each blended dimension linearly combines a unit-normalised
+     * uniform prior (declared preferences) with the unit-normalised rating evidence using
+     * coefficient {@code α = min(1 - FLOOR, n / CAP)}. Theme and platform dimensions are not
+     * blended. Release-year evidence is per-rated-game release-date classified into the bucket
+     * labels defined by {@link #releaseYearBucket(String)}.
+     */
+    public static UserProfile buildMultiDim(List<UserGameDTO> ratedGames,
+                                             List<UserPlatformDTO> userPlatforms,
+                                             List<String> genrePreferences,
+                                             List<String> tagPreferences,
+                                             List<String> releaseYearPreferences) {
         boolean hasRated = ratedGames != null && !ratedGames.isEmpty();
         boolean hasGenrePrefs = genrePreferences != null && !genrePreferences.isEmpty();
         boolean hasTagPrefs = tagPreferences != null && !tagPreferences.isEmpty();
+        boolean hasReleaseYearPrefs = releaseYearPreferences != null && !releaseYearPreferences.isEmpty();
 
-        if (!hasRated && !hasGenrePrefs && !hasTagPrefs) {
-            return new UserProfile(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>(), 0);
+        if (!hasRated && !hasGenrePrefs && !hasTagPrefs && !hasReleaseYearPrefs) {
+            return new UserProfile(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>(), Set.of(), 0);
         }
 
         int ratedCount = ratedGames == null ? 0 : ratedGames.size();
@@ -117,6 +129,7 @@ public class UserProfileBuilder {
         Map<String, Double> rawGenres = hasRated ? accumulate(ratedGames, UserGameDTO::getGenres) : new HashMap<>();
         Map<String, Double> rawTags = hasRated ? accumulate(ratedGames, UserGameDTO::getTags) : new HashMap<>();
         Map<String, Double> themes = hasRated ? accumulate(ratedGames, UserGameDTO::getThemes) : new HashMap<>();
+        Map<String, Double> rawReleaseYears = hasRated ? accumulateReleaseYears(ratedGames) : new HashMap<>();
 
         Map<String, Double> genres = hasGenrePrefs
                 ? blendGenres(rawGenres, genrePreferences, ratedCount)
@@ -126,11 +139,26 @@ public class UserProfileBuilder {
                 ? blendTags(rawTags, tagPreferences, ratedCount)
                 : rawTags;
 
+        Map<String, Double> releaseYears = hasReleaseYearPrefs
+                ? blendReleaseYears(rawReleaseYears, releaseYearPreferences, ratedCount)
+                : rawReleaseYears;
+
+        // Snapshot of the trimmed / deduped declared release-year buckets. Scoring layer
+        // uses this set (not the blended releaseYears map) so the boost fires only on the
+        // user's explicit picks, never on rating-evidence buckets.
+        Set<String> declaredReleaseYears = hasReleaseYearPrefs
+                ? releaseYearPreferences.stream()
+                        .filter(Objects::nonNull)
+                        .map(String::trim)
+                        .filter(s -> !s.isEmpty())
+                        .collect(Collectors.toUnmodifiableSet())
+                : Set.of();
+
         Map<String, Double> rawPlatforms = hasRated ? accumulatePlatform(ratedGames) : new HashMap<>();
         applyPrimaryBoost(rawPlatforms, userPlatforms);
         Map<String, Double> platforms = sqrtNormalise(rawPlatforms);
 
-        return new UserProfile(genres, themes, tags, platforms, ratedCount);
+        return new UserProfile(genres, themes, tags, platforms, releaseYears, declaredReleaseYears, ratedCount);
     }
 
     /** Thin alias for direct unit-test access. */
@@ -145,6 +173,52 @@ public class UserProfileBuilder {
                                           List<String> preferences,
                                           int ratedCount) {
         return blendWithPrior(ratingTags, preferences, ratedCount);
+    }
+
+    /** Thin alias for direct unit-test access. */
+    static Map<String, Double> blendReleaseYears(Map<String, Double> ratingReleaseYears,
+                                                  List<String> preferences,
+                                                  int ratedCount) {
+        return blendWithPrior(ratingReleaseYears, preferences, ratedCount);
+    }
+
+    /**
+     * Classifies an ISO release date string into one of the five fixed decade buckets used by
+     * the declared release-year preferences. {@code null}, blank, or unparseable input returns
+     * {@code null} so the accumulator and scorer skip the row gracefully. The {@code Pre-1990}
+     * and {@code 2020s} buckets are intentionally open-ended on their respective sides.
+     */
+    public static String releaseYearBucket(String releasedIso) {
+        if (releasedIso == null || releasedIso.length() < 4) return null;
+        int year;
+        try {
+            year = Integer.parseInt(releasedIso.substring(0, 4));
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+        if (year < 1990) return "Pre-1990";
+        if (year < 2000) return "1990s";
+        if (year < 2010) return "2000s";
+        if (year < 2020) return "2010s";
+        return "2020s";
+    }
+
+    /**
+     * Each rated game contributes {@link #weightFor(int)} to the bucket its release date falls
+     * into. Null / unparseable release dates skipped. Output is a raw weight map; the calling
+     * blend helper normalises before combining with the declared prior.
+     */
+    private static Map<String, Double> accumulateReleaseYears(List<UserGameDTO> games) {
+        Map<String, Double> totals = new HashMap<>();
+        for (UserGameDTO g : games) {
+            if (g.getRating() == null) continue;
+            double weight = weightFor(g.getRating());
+            if (weight <= 0.0) continue;
+            String bucket = releaseYearBucket(g.getReleased());
+            if (bucket == null) continue;
+            totals.merge(bucket, weight, Double::sum);
+        }
+        return totals;
     }
 
     /** Linearly combines unit-normalised rating evidence with a uniform preference prior. */

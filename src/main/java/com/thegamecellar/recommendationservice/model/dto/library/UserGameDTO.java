@@ -18,6 +18,7 @@ public class UserGameDTO {
     private List<String> genres;
     private List<String> themes;
     private List<String> tags;
+    private String released;
     private LocalDateTime dateAdded;
     private LocalDateTime lastPlayed;
     private Integer playtime;

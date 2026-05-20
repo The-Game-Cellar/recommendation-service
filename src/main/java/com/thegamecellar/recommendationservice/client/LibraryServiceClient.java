@@ -4,6 +4,7 @@ import com.thegamecellar.recommendationservice.exception.ServiceCommunicationExc
 import com.thegamecellar.recommendationservice.model.dto.library.UserGameDTO;
 import com.thegamecellar.recommendationservice.model.dto.library.UserGenrePreferenceDTO;
 import com.thegamecellar.recommendationservice.model.dto.library.UserPlatformDTO;
+import com.thegamecellar.recommendationservice.model.dto.library.UserReleaseYearPreferenceDTO;
 import com.thegamecellar.recommendationservice.model.dto.library.UserTagPreferenceDTO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -141,6 +142,35 @@ public class LibraryServiceClient {
             return Collections.emptyList();
         } catch (RestClientException ex) {
             log.warn("Library Service unavailable (tag-preferences): {}, returning empty list", ex.getClass().getSimpleName());
+            return Collections.emptyList();
+        }
+    }
+
+    /** Release-year-preference fetch, mirrors {@link #getTagPreferences(String)}. Empty list on error, never null. */
+    public List<String> getReleaseYearPreferences(String bearerToken) {
+        try {
+            ResponseEntity<UserReleaseYearPreferenceDTO[]> response = restTemplate.exchange(
+                    libraryServiceUrl + "/api/v1/library/release-year-preferences",
+                    HttpMethod.GET,
+                    buildRequest(bearerToken),
+                    UserReleaseYearPreferenceDTO[].class
+            );
+            if (response.getBody() == null) {
+                return Collections.emptyList();
+            }
+            return Arrays.stream(response.getBody())
+                    .map(UserReleaseYearPreferenceDTO::getBucketLabel)
+                    .filter(label -> label != null && !label.isBlank())
+                    .toList();
+        } catch (HttpClientErrorException ex) {
+            if (ex.getStatusCode().value() == 401 || ex.getStatusCode().value() == 403) {
+                log.error("Library Service auth error (release-year-preferences): {}, JWT not forwarded correctly", ex.getStatusCode());
+                throw new ServiceCommunicationException("Library Service auth error: " + ex.getStatusCode(), ex);
+            }
+            log.warn("Library Service error (release-year-preferences): {} {}, returning empty list", ex.getClass().getSimpleName(), ex.getStatusCode());
+            return Collections.emptyList();
+        } catch (RestClientException ex) {
+            log.warn("Library Service unavailable (release-year-preferences): {}, returning empty list", ex.getClass().getSimpleName());
             return Collections.emptyList();
         }
     }
