@@ -11,9 +11,6 @@ import com.thegamecellar.recommendationservice.service.RecommendationService;
 import com.thegamecellar.recommendationservice.service.SimilarGameService;
 import com.thegamecellar.recommendationservice.service.WildCardService;
 import com.thegamecellar.recommendationservice.util.JwtUtils;
-// TODO (post-MVP): Implement rate limiting to prevent abuse. Each request can trigger multiple
-//  downstream calls to Game Service and Library Service. Rate limiting should be handled
-//  centrally in API Gateway (port 8000) rather than per-service.
 import lombok.RequiredArgsConstructor;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -44,12 +41,7 @@ public class RecommendationController {
     private final SimilarGameService similarGameService;
     private final DashboardService dashboardService;
 
-    /**
-     * POST rather than GET: the {@code recentlyShownIds} list grows uncapped with session
-     * activity ("until logout" semantics) and would routinely exceed Tomcat's HTTP header
-     * buffer if shipped as a query string. The body shape lifts that ceiling to Spring's
-     * request-body limit (multi-MB).
-     */
+    // POST not GET: recentlyShownIds grows uncapped per session and would blow Tomcat's HTTP header buffer as a query string.
     @PostMapping("/personalized")
     public ResponseEntity<List<RecommendationDTO>> getPersonalized(
             Authentication authentication,
@@ -59,11 +51,6 @@ public class RecommendationController {
         return ResponseEntity.ok(recommendationService.getPersonalized(token, request.getLimit(), recent));
     }
 
-    /**
-     * Row-based grouped variant. Same auth / payload conventions as {@code /personalized}
-     * but the response splits results into genre-titled rows ranked by user's library
-     * composition, with cascading fallback to popular when user genres run out.
-     */
     @PostMapping("/personalized/grouped")
     public ResponseEntity<GroupedRecommendationsResponse> getPersonalizedGrouped(
             Authentication authentication,
@@ -101,12 +88,7 @@ public class RecommendationController {
         return ResponseEntity.ok(similarGameService.getBecauseYouLiked(gameId, token, limit));
     }
 
-    /**
-     * POST rather than GET for the same reason as {@code /personalized}: the
-     * {@code recentlyShownIds} list grows uncapped across a session and would routinely exceed
-     * Tomcat's default header buffer if shipped as a query string. Body is optional so cold-start
-     * callers (initial mount, no shown ids yet) can omit it.
-     */
+    // POST for same reason as /personalized; body optional for cold-start callers.
     @PostMapping("/dashboard")
     public ResponseEntity<DashboardDTO> getDashboard(
             Authentication authentication,

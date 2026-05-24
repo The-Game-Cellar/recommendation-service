@@ -5,11 +5,7 @@ import lombok.Data;
 
 import java.util.List;
 
-/**
- * Request body for {@code POST /api/v1/recommendations/personalized/grouped}. Same body
- * shape as the flat {@code /personalized} endpoint minus {@code limit}; the row layout has
- * a fixed shape (8 rows × {@link com.thegamecellar.recommendationservice.service.RecommendationService#GROUPED_PER_ROW} games).
- */
+// Row layout has fixed shape so no limit field (vs PersonalizedRequest).
 @Data
 public class GroupedRequest {
     @Size(max = 5000)

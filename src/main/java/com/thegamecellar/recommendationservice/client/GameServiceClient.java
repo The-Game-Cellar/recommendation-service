@@ -108,19 +108,10 @@ public class GameServiceClient {
         }
     }
 
-    /**
-     * Single-call uniform random sample of quality games in one genre. Game Service runs an
-     * SQL {@code ORDER BY RANDOM() LIMIT N} on rows that pass server-side rating + vote-count
-     * filters, so the result is a true uniform sample over the full quality subset (no page
-     * math, no NULL-tail bias, no pagination quirks).
-     */
     public List<GameDTO> randomQualityByGenre(String genre, java.math.BigDecimal minRating, int minVotes, int limit, String bearerToken) {
         try {
-            // Build URI object (already encoded) and pass to RestTemplate's URI overload.
-            // the String-URL overload runs URI template processing that double-encodes any
-            // pre-encoded percent sequences (e.g. "%28" becomes "%2528"), which Tomcat then
-            // single-decodes to a literal "%28" in the request param, breaking SQL matches
-            // for genres like "Role-playing (RPG)".
+            // Pass URI (not String): the String overload double-encodes pre-encoded "%28" to "%2528",
+            // breaking SQL match for genres like "Role-playing (RPG)".
             java.net.URI uri = UriComponentsBuilder
                     .fromUriString(gameServiceUrl + "/api/v1/games/random-quality")
                     .queryParam("genre", genre)
