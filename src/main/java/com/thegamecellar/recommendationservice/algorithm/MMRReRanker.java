@@ -51,7 +51,7 @@ public class MMRReRanker {
         List<GameDTO> picked = new ArrayList<>(outputSize);
         List<GameDTO> remaining = new ArrayList<>(sorted);
 
-        // First slot is the top of the supplied (possibly jittered-sorted) pool — sets the anchor.
+        // First slot is the top of the supplied (possibly jittered-sorted) pool. Sets the anchor.
         picked.add(remaining.remove(0));
 
         while (picked.size() < outputSize && !remaining.isEmpty()) {

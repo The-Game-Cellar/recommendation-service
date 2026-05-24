@@ -177,7 +177,7 @@ class SimilarityScorerTest {
 
     @Test
     void platformBoost_balanced_user_has_minimal_gap_between_pure_and_cross_platform() {
-        // A 50/50 user — no real primary. Average self-scales: gap shrinks to zero.
+        // A 50/50 user, no real primary. Average self-scales: gap shrinks to zero.
         Map<String, Double> profile = Map.of("PlayStation 5", 0.50, "PC", 0.50);
 
         GameDTO purePrimary = new GameDTO();

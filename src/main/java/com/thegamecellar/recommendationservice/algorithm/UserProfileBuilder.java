@@ -21,7 +21,7 @@ public class UserProfileBuilder {
      * that platform as primary in their {@code user_platforms} entry. Doubles the raw count
      * before sqrt-normalisation, so a primary-marked PS5 with raw count 69 becomes 138, lifting
      * the post-normalisation weight noticeably without erasing the user's secondary platforms.
-     * Dormant when no platform is marked primary (today's default — UI to set this is a future
+     * Dormant when no platform is marked primary (today's default, UI to set this is a future
      * issue) and gracefully no-op for users with all platforms marked primary (multiplier
      * applied uniformly cancels in normalisation).
      */
@@ -67,7 +67,7 @@ public class UserProfileBuilder {
      * field (the platform the user actually plays a game on, set when adding it to the library)
      * and post-processed through a square-root normalisation so values sum to 1.0. Sqrt damping
      * keeps a heavily-skewed library's secondary platform visible while still preferring the
-     * primary — a 90 PS5 / 10 PC user gets weights {@code {PS5≈0.75, PC≈0.25}} instead of the
+     * primary: a 90 PS5 / 10 PC user gets weights {@code {PS5≈0.75, PC≈0.25}} instead of the
      * raw {@code {PS5=0.90, PC=0.10}} that would mute the secondary platform almost entirely.
      */
     public static UserProfile buildMultiDim(List<UserGameDTO> ratedGames) {
@@ -77,7 +77,7 @@ public class UserProfileBuilder {
     /**
      * Multi-dim profile with optional primary-platform amplification. {@code userPlatforms}
      * carries the user's onboarding-set platforms with the {@link UserPlatformDTO#getIsPrimary()}
-     * flag — any platform marked primary gets its raw rating-weighted count multiplied by
+     * flag: any platform marked primary gets its raw rating-weighted count multiplied by
      * {@link #PRIMARY_PLATFORM_BOOST_MULTIPLIER} before sqrt-normalisation, lifting its
      * post-normalisation weight without erasing secondaries. Pass an empty list (or use the
      * single-arg overload) to skip the amplification entirely.
@@ -300,7 +300,7 @@ public class UserProfileBuilder {
      * Multiplies the raw count of platforms marked {@code is_primary = true} by
      * {@link #PRIMARY_PLATFORM_BOOST_MULTIPLIER}. Mutates the supplied map in place. No-op when
      * {@code userPlatforms} is null/empty or when no platform has the flag set. Platforms with
-     * a primary flag but no rated games (raw count = 0) stay at 0 — primary-marking doesn't
+     * a primary flag but no rated games (raw count = 0) stay at 0; primary-marking doesn't
      * conjure data, it amplifies existing rating signal.
      */
     private static void applyPrimaryBoost(Map<String, Double> rawCounts,
@@ -320,7 +320,7 @@ public class UserProfileBuilder {
     }
 
     /**
-     * Profile weight per rated game. Ratings of 5 or below contribute nothing — those are
+     * Profile weight per rated game. Ratings of 5 or below contribute nothing; those are
      * ambivalent or actively-disliked titles and shouldn't shape recommendations. Above 5,
      * the contribution is {@code rating - 5} so a 9★ game weighs 4× as much as a 6★ game
      * (was 1.5× when raw rating was used as weight, which let mediocre ratings dilute the
@@ -352,7 +352,7 @@ public class UserProfileBuilder {
 
     /**
      * Sqrt-softens a raw count vector then normalises so values sum to 1.0. Standard IR damping
-     * pattern (BM25 / Lucene tfNorm) — compresses dynamic range so a heavily-skewed distribution
+     * pattern (BM25 / Lucene tfNorm): compresses dynamic range so a heavily-skewed distribution
      * doesn't push the secondary entries to near-zero. Empty input → empty output.
      */
     private static Map<String, Double> sqrtNormalise(Map<String, Double> raw) {
@@ -394,7 +394,7 @@ public class UserProfileBuilder {
     /**
      * Weighted random sampling without replacement (Efraimidis-Spirakis A-Res).
      * Each entry's selection probability is proportional to its weight, but
-     * lower-weighted entries can still be sampled occasionally — preserving
+     * lower-weighted entries can still be sampled occasionally, preserving
      * variety across requests instead of always returning the same top-K.
      *
      * @return up to k keys from profile, weighted by value

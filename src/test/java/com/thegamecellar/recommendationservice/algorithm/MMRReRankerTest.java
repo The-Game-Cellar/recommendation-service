@@ -63,7 +63,7 @@ class MMRReRankerTest {
 
     @Test
     void reRank_prefers_diverse_candidates_when_relevance_is_comparable() {
-        // User likes RPGs + souls-likes, AND Action + stealth — equal weight on both clusters.
+        // User likes RPGs + souls-likes, AND Action + stealth (equal weight on both clusters).
         UserProfile profile = new UserProfile(
                 Map.of("RPG", 5.0, "Action", 5.0),
                 new HashMap<>(),
@@ -79,13 +79,13 @@ class MMRReRankerTest {
         anchor.setGenres(List.of("RPG"));
         anchor.setTags(List.of("souls-like"));
 
-        // Near-duplicate — same shape as anchor.
+        // Near-duplicate: same shape as anchor.
         GameDTO duplicate = new GameDTO();
         duplicate.setIgdbId(2);
         duplicate.setGenres(List.of("RPG"));
         duplicate.setTags(List.of("souls-like"));
 
-        // Diverse — equal raw relevance to user (Action + stealth) but disjoint feature
+        // Diverse: equal raw relevance to user (Action + stealth) but disjoint feature
         // set vs. anchor. With λ=0.7 the duplicate's near-1.0 similarity penalty makes
         // diverse the winner for slot 2.
         GameDTO diverse = new GameDTO();

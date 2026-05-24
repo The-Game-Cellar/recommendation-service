@@ -123,7 +123,7 @@ class RecommendationServiceTest {
         ));
         when(libraryServiceClient.getPlatforms("token")).thenReturn(List.of(platform("PC")));
 
-        // Genre search returns nothing — only graph candidates should populate the pool.
+        // Genre search returns nothing; only graph candidates should populate the pool.
         when(gameServiceClient.randomQualityByGenre(eq("RPG"), any(), anyInt(), anyInt(), anyString()))
                 .thenReturn(List.of());
 
@@ -221,7 +221,7 @@ class RecommendationServiceTest {
         when(libraryServiceClient.getPlatforms("token")).thenReturn(List.of(platform("PC")));
         when(gameServiceClient.randomQualityByGenre(eq("RPG"), any(), anyInt(), anyInt(), anyString()))
                 .thenReturn(List.of(game(10, "RPG result", "RPG")));
-        // Strategy genre should NOT be queried — DROPPED games filtered out before profile build.
+        // Strategy genre should NOT be queried; DROPPED games filtered out before profile build.
         lenient().when(gameServiceClient.randomQualityByGenre(eq("Strategy"), any(), anyInt(), anyInt(), anyString()))
                 .thenReturn(List.of(game(20, "Strategy result", "Strategy")));
 
@@ -233,7 +233,7 @@ class RecommendationServiceTest {
 
     @Test
     void getPersonalized_treats_null_status_as_eligible_for_legacy_rows() {
-        // Legacy rated row without status — keep it eligible so we don't silently drop it.
+        // Legacy rated row without status; keep it eligible so we don't silently drop it.
         UserGameDTO rated = ratedGame(1, 8, "RPG");
         rated.setStatus(null);
         when(libraryServiceClient.getGames("token")).thenReturn(List.of(rated));
@@ -271,7 +271,7 @@ class RecommendationServiceTest {
         when(gameServiceClient.randomQualityByGenre(eq("RPG"), any(), anyInt(), anyInt(), anyString()))
                 .thenReturn(List.of(ps5Candidate, pcCandidate));
 
-        // Run multiple times — even with score jitter, PS5 should land first the vast majority.
+        // Run multiple times: even with score jitter, PS5 should land first the vast majority.
         int ps5First = 0;
         int trials = 50;
         for (int i = 0; i < trials; i++) {
@@ -279,7 +279,7 @@ class RecommendationServiceTest {
             if (!result.isEmpty() && result.get(0).getIgdbId() == 100) ps5First++;
         }
 
-        // platformBoost contribution = 0.15 * (0.69 - 0.31) ≈ 0.057, jitter range = 0.08 — close
+        // platformBoost contribution = 0.15 * (0.69 - 0.31) ≈ 0.057, jitter range = 0.08; close
         // call but PS5 should still dominate. Assert majority lower-bound.
         assertThat(ps5First).as("PS5-exclusive should rank first more often than PC-exclusive")
                 .isGreaterThan(trials / 2);
@@ -314,7 +314,7 @@ class RecommendationServiceTest {
     @Test
     void getPersonalized_returns_empty_when_library_service_is_down() {
         when(libraryServiceClient.getGames("token")).thenReturn(List.of());
-        // getPlatforms and getPopularGames not mocked — Mockito returns empty list by default
+        // getPlatforms and getPopularGames not mocked (Mockito returns empty list by default)
 
         List<RecommendationDTO> result = recommendationService.getPersonalized("token", 10);
 
