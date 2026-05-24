@@ -16,21 +16,13 @@ import java.util.stream.Collectors;
 
 public class UserProfileBuilder {
 
-    /**
-     * Multiplier applied to a platform's raw rating-weighted count when the user has marked
-     * that platform as primary in their {@code user_platforms} entry. Doubles the raw count
-     * before sqrt-normalisation, so a primary-marked PS5 with raw count 69 becomes 138, lifting
-     * the post-normalisation weight noticeably without erasing the user's secondary platforms.
-     * Dormant when no platform is marked primary (today's default, UI to set this is a future
-     * issue) and gracefully no-op for users with all platforms marked primary (multiplier
-     * applied uniformly cancels in normalisation).
-     */
+    // 2.0x raw count before sqrt-normalise on primary-marked platforms; cancels uniformly when all are primary.
     public static final double PRIMARY_PLATFORM_BOOST_MULTIPLIER = 2.0;
 
-    /** Rated-count at which preference prior decays to its floor weight. Set to 0 for ratings-only. */
+    // Rated-count at which preference prior decays to floor; 0 = ratings-only.
     public static final int PREFERENCE_BLEND_CAP = 10;
 
-    /** Permanent floor weight of the declared-preference prior. Set to 0.0 for legacy no-floor behaviour. */
+    // Permanent floor weight of the declared-preference prior; 0.0 = legacy no-floor behaviour.
     public static final double PREFERENCE_BLEND_FLOOR = 0.15;
 
     private UserProfileBuilder() {}
@@ -58,43 +50,22 @@ public class UserProfileBuilder {
         return profile;
     }
 
-    /**
-     * Multi-dimensional profile. Each dimension accumulates the user's rating as a weight
-     * on every feature value of every rated game. Higher-rated games dominate the resulting
-     * weight vectors. Consumed by the weighted-cosine scorer + MMR re-rank.
-     * <p>
-     * The {@code platforms} dimension is built from the per-row {@link UserGameDTO#getPlatform()}
-     * field (the platform the user actually plays a game on, set when adding it to the library)
-     * and post-processed through a square-root normalisation so values sum to 1.0. Sqrt damping
-     * keeps a heavily-skewed library's secondary platform visible while still preferring the
-     * primary: a 90 PS5 / 10 PC user gets weights {@code {PS5≈0.75, PC≈0.25}} instead of the
-     * raw {@code {PS5=0.90, PC=0.10}} that would mute the secondary platform almost entirely.
-     */
+    // platforms dim uses sqrt-normalisation so a 90/10 skew becomes ~75/25 (secondary stays visible).
     public static UserProfile buildMultiDim(List<UserGameDTO> ratedGames) {
         return buildMultiDim(ratedGames, List.of());
     }
 
-    /**
-     * Multi-dim profile with optional primary-platform amplification. {@code userPlatforms}
-     * carries the user's onboarding-set platforms with the {@link UserPlatformDTO#getIsPrimary()}
-     * flag: any platform marked primary gets its raw rating-weighted count multiplied by
-     * {@link #PRIMARY_PLATFORM_BOOST_MULTIPLIER} before sqrt-normalisation, lifting its
-     * post-normalisation weight without erasing secondaries. Pass an empty list (or use the
-     * single-arg overload) to skip the amplification entirely.
-     */
     public static UserProfile buildMultiDim(List<UserGameDTO> ratedGames,
                                              List<UserPlatformDTO> userPlatforms) {
         return buildMultiDim(ratedGames, userPlatforms, List.of());
     }
 
-    /** Three-arg overload, delegates with empty tag-preferences. */
     public static UserProfile buildMultiDim(List<UserGameDTO> ratedGames,
                                              List<UserPlatformDTO> userPlatforms,
                                              List<String> genrePreferences) {
         return buildMultiDim(ratedGames, userPlatforms, genrePreferences, List.of());
     }
 
-    /** Four-arg overload, delegates with empty release-year-preferences. */
     public static UserProfile buildMultiDim(List<UserGameDTO> ratedGames,
                                              List<UserPlatformDTO> userPlatforms,
                                              List<String> genrePreferences,
@@ -102,14 +73,8 @@ public class UserProfileBuilder {
         return buildMultiDim(ratedGames, userPlatforms, genrePreferences, tagPreferences, List.of());
     }
 
-    /**
-     * Multi-dim profile with primary-platform amplification and cold-start blends for the genre,
-     * tag and release-year dimensions. Each blended dimension linearly combines a unit-normalised
-     * uniform prior (declared preferences) with the unit-normalised rating evidence using
-     * coefficient {@code α = min(1 - FLOOR, n / CAP)}. Theme and platform dimensions are not
-     * blended. Release-year evidence is per-rated-game release-date classified into the bucket
-     * labels defined by {@link #releaseYearBucket(String)}.
-     */
+    // Cold-start blend: α = min(1 - FLOOR, n / CAP) linearly mixes unit-normalised prior with rating evidence.
+    // Theme + platform dimensions skip the blend. Release-year evidence buckets via releaseYearBucket().
     public static UserProfile buildMultiDim(List<UserGameDTO> ratedGames,
                                              List<UserPlatformDTO> userPlatforms,
                                              List<String> genrePreferences,
@@ -143,9 +108,7 @@ public class UserProfileBuilder {
                 ? blendReleaseYears(rawReleaseYears, releaseYearPreferences, ratedCount)
                 : rawReleaseYears;
 
-        // Snapshot of the trimmed / deduped declared release-year buckets. Scoring layer
-        // uses this set (not the blended releaseYears map) so the boost fires only on the
-        // user's explicit picks, never on rating-evidence buckets.
+        // Scorer reads this snapshot (not the blended map) so the boost fires only on explicit picks.
         Set<String> declaredReleaseYears = hasReleaseYearPrefs
                 ? releaseYearPreferences.stream()
                         .filter(Objects::nonNull)
@@ -161,33 +124,26 @@ public class UserProfileBuilder {
         return new UserProfile(genres, themes, tags, platforms, releaseYears, declaredReleaseYears, ratedCount);
     }
 
-    /** Thin alias for direct unit-test access. */
+    // Aliases below exist for direct unit-test access.
     static Map<String, Double> blendGenres(Map<String, Double> ratingGenres,
                                             List<String> preferences,
                                             int ratedCount) {
         return blendWithPrior(ratingGenres, preferences, ratedCount);
     }
 
-    /** Thin alias for direct unit-test access. */
     static Map<String, Double> blendTags(Map<String, Double> ratingTags,
                                           List<String> preferences,
                                           int ratedCount) {
         return blendWithPrior(ratingTags, preferences, ratedCount);
     }
 
-    /** Thin alias for direct unit-test access. */
     static Map<String, Double> blendReleaseYears(Map<String, Double> ratingReleaseYears,
                                                   List<String> preferences,
                                                   int ratedCount) {
         return blendWithPrior(ratingReleaseYears, preferences, ratedCount);
     }
 
-    /**
-     * Classifies an ISO release date string into one of the five fixed decade buckets used by
-     * the declared release-year preferences. {@code null}, blank, or unparseable input returns
-     * {@code null} so the accumulator and scorer skip the row gracefully. The {@code Pre-1990}
-     * and {@code 2020s} buckets are intentionally open-ended on their respective sides.
-     */
+    // Pre-1990 and 2020s are open-ended on their respective sides.
     public static String releaseYearBucket(String releasedIso) {
         if (releasedIso == null || releasedIso.length() < 4) return null;
         int year;
@@ -203,11 +159,6 @@ public class UserProfileBuilder {
         return "2020s";
     }
 
-    /**
-     * Each rated game contributes {@link #weightFor(int)} to the bucket its release date falls
-     * into. Null / unparseable release dates skipped. Output is a raw weight map; the calling
-     * blend helper normalises before combining with the declared prior.
-     */
     private static Map<String, Double> accumulateReleaseYears(List<UserGameDTO> games) {
         Map<String, Double> totals = new HashMap<>();
         for (UserGameDTO g : games) {
@@ -221,7 +172,6 @@ public class UserProfileBuilder {
         return totals;
     }
 
-    /** Linearly combines unit-normalised rating evidence with a uniform preference prior. */
     private static Map<String, Double> blendWithPrior(Map<String, Double> ratingWeights,
                                                        List<String> preferences,
                                                        int ratedCount) {
@@ -253,10 +203,6 @@ public class UserProfileBuilder {
         return blended;
     }
 
-    /**
-     * Divides each value by the sum so the resulting map is on a unit simplex. Null/non-positive
-     * entries are dropped. Empty input → empty output.
-     */
     static Map<String, Double> normaliseToUnit(Map<String, Double> raw) {
         if (raw == null || raw.isEmpty()) return new HashMap<>();
         double sum = 0.0;
@@ -274,10 +220,6 @@ public class UserProfileBuilder {
         return out;
     }
 
-    /**
-     * Uniform distribution over the supplied names ({@code 1/k} each, sum = 1.0). Trims and
-     * dedupes; null/blank entries dropped. Empty/null input → empty output.
-     */
     static Map<String, Double> uniformOver(List<String> names) {
         if (names == null || names.isEmpty()) return new HashMap<>();
         Set<String> deduped = new HashSet<>();
@@ -296,13 +238,7 @@ public class UserProfileBuilder {
         return out;
     }
 
-    /**
-     * Multiplies the raw count of platforms marked {@code is_primary = true} by
-     * {@link #PRIMARY_PLATFORM_BOOST_MULTIPLIER}. Mutates the supplied map in place. No-op when
-     * {@code userPlatforms} is null/empty or when no platform has the flag set. Platforms with
-     * a primary flag but no rated games (raw count = 0) stay at 0; primary-marking doesn't
-     * conjure data, it amplifies existing rating signal.
-     */
+    // Mutates in place. Primary-marked platforms with zero rating evidence stay at zero; this amplifies signal, not conjures it.
     private static void applyPrimaryBoost(Map<String, Double> rawCounts,
                                            List<UserPlatformDTO> userPlatforms) {
         if (userPlatforms == null || userPlatforms.isEmpty()) return;
@@ -319,22 +255,11 @@ public class UserProfileBuilder {
         }
     }
 
-    /**
-     * Profile weight per rated game. Ratings of 5 or below contribute nothing; those are
-     * ambivalent or actively-disliked titles and shouldn't shape recommendations. Above 5,
-     * the contribution is {@code rating - 5} so a 9★ game weighs 4× as much as a 6★ game
-     * (was 1.5× when raw rating was used as weight, which let mediocre ratings dilute the
-     * profile signal).
-     */
+    // Ratings <= 5 contribute zero (ambivalent / actively-disliked). 9-star weighs 4x a 6-star (rating-5).
     private static double weightFor(int rating) {
         return rating > 5 ? (rating - 5) : 0.0;
     }
 
-    /**
-     * Accumulates rating-weight per single-string {@link UserGameDTO#getPlatform()} value. Mirrors
-     * {@link #accumulate(List, Function)} but for the singular platform field rather than the list
-     * dimensions. Returns raw counts; sqrt-normalisation applied in {@link #sqrtNormalise(Map)}.
-     */
     private static Map<String, Double> accumulatePlatform(List<UserGameDTO> games) {
         Map<String, Double> totals = new HashMap<>();
         for (UserGameDTO g : games) {
@@ -350,11 +275,7 @@ public class UserProfileBuilder {
         return totals;
     }
 
-    /**
-     * Sqrt-softens a raw count vector then normalises so values sum to 1.0. Standard IR damping
-     * pattern (BM25 / Lucene tfNorm): compresses dynamic range so a heavily-skewed distribution
-     * doesn't push the secondary entries to near-zero. Empty input → empty output.
-     */
+    // BM25 / Lucene tfNorm-style damping: sqrt-soften then normalise so skewed dists don't crush secondaries to zero.
     private static Map<String, Double> sqrtNormalise(Map<String, Double> raw) {
         if (raw == null || raw.isEmpty()) return new HashMap<>();
         double sumSqrt = 0.0;
@@ -391,14 +312,7 @@ public class UserProfileBuilder {
         return totals;
     }
 
-    /**
-     * Weighted random sampling without replacement (Efraimidis-Spirakis A-Res).
-     * Each entry's selection probability is proportional to its weight, but
-     * lower-weighted entries can still be sampled occasionally, preserving
-     * variety across requests instead of always returning the same top-K.
-     *
-     * @return up to k keys from profile, weighted by value
-     */
+    // Efraimidis-Spirakis A-Res: weighted sampling without replacement. Low-weight entries still occasionally sampled.
     public static List<String> sampleWeighted(Map<String, Double> profile, int k) {
         if (profile == null || profile.isEmpty() || k <= 0) {
             return List.of();

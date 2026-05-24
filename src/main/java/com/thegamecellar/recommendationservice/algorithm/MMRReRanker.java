@@ -8,12 +8,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 
-/**
- * Maximal Marginal Relevance re-rank. Replaces the prior {@code Collections.shuffle}
- * diversity hack with a deterministic, signal-driven balance: each output slot picks
- * the candidate that maximises {@code λ · relevance - (1 - λ) · max-similarity-to-picked}.
- * λ=0.7 keeps relevance dominant while preventing top-N from being ten near-duplicates.
- */
+// MMR: pick the candidate maximising λ * relevance - (1-λ) * max-similarity-to-picked. Avoids near-duplicate top-N.
 public class MMRReRanker {
 
     public static final double DEFAULT_LAMBDA = 0.85;
@@ -32,12 +27,7 @@ public class MMRReRanker {
         return reRank(sorted, profile, k, lambda, jitter, 0.0, Set.of());
     }
 
-    /**
-     * MMR re-rank with optional per-iteration relevance jitter and a soft penalty for ids in
-     * the recency set. Jitter > 0 randomizes anchor + cascade across calls; penalty > 0 pushes
-     * recently-shown candidates down without excluding them, so they only resurface if the
-     * pool is otherwise empty.
-     */
+    // jitter randomises anchor + cascade across calls; penalty soft-drops recency-set ids without excluding.
     public static List<GameDTO> reRank(List<GameDTO> sorted, UserProfile profile, int k,
                                         double lambda, double jitter,
                                         double penalty, Set<Integer> penalizedIds) {
@@ -51,7 +41,7 @@ public class MMRReRanker {
         List<GameDTO> picked = new ArrayList<>(outputSize);
         List<GameDTO> remaining = new ArrayList<>(sorted);
 
-        // First slot is the top of the supplied (possibly jittered-sorted) pool. Sets the anchor.
+        // First slot anchors on the top of the supplied pool.
         picked.add(remaining.remove(0));
 
         while (picked.size() < outputSize && !remaining.isEmpty()) {
@@ -86,10 +76,6 @@ public class MMRReRanker {
         return picked;
     }
 
-    /**
-     * Cosine similarity between two games over the union of their genre + theme + tag
-     * features (binary presence). Used by MMR to avoid stacking near-duplicates.
-     */
     private static double featureSimilarity(GameDTO a, GameDTO b) {
         Set<String> aFeatures = unionFeatures(a);
         Set<String> bFeatures = unionFeatures(b);

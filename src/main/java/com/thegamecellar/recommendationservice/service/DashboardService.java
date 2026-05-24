@@ -27,11 +27,7 @@ public class DashboardService {
         return getDashboard(bearerToken, null);
     }
 
-    /**
-     * Recently-shown ids feed the soft score penalty in the personalized section only. Wild Card
-     * is already random-per-call and Because You Liked is seed-driven, so neither benefits from
-     * the same recency input and they intentionally ignore it.
-     */
+    // recentlyShownIds applies to personalized only; Wild Card is random-per-call and Because You Liked is seed-driven.
     public DashboardDTO getDashboard(String bearerToken, Set<Integer> recentlyShownIds) {
         List<RecommendationDTO> recommendations;
         try {
@@ -61,8 +57,7 @@ public class DashboardService {
     private List<BecauseYouLikedDTO> getBecauseYouLiked(String bearerToken) {
         List<UserGameDTO> games = libraryServiceClient.getGames(bearerToken);
 
-        // Shuffle eligible games so the seed rotates across requests rather than always being the
-        // same highest-rated game (insertion-order bias).  Pick 1 seed for the dashboard.
+        // Shuffle eligible so seed rotates; without it insertion order would always pick the same game.
         List<UserGameDTO> eligible = games.stream()
                 .filter(g -> g.getRating() != null && g.getRating() >= 8 && g.getIgdbGameId() != null)
                 .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));

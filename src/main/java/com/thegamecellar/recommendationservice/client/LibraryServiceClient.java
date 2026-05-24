@@ -83,12 +83,7 @@ public class LibraryServiceClient {
         }
     }
 
-    /**
-     * Returns the user's onboarding-set genre preferences as a flat list of names. Used as a
-     * cold-start prior in {@code UserProfileBuilder} that decays as the user accumulates
-     * actual ratings. Returns an empty list when the endpoint is missing, the user has no
-     * preferences, or the call fails, never null.
-     */
+    // Cold-start prior in UserProfileBuilder, decays as ratings accumulate. Never null.
     public List<String> getGenrePreferences(String bearerToken) {
         try {
             ResponseEntity<UserGenrePreferenceDTO[]> response = restTemplate.exchange(
@@ -117,7 +112,6 @@ public class LibraryServiceClient {
         }
     }
 
-    /** Tag-preference fetch, mirrors {@link #getGenrePreferences(String)}. Empty list on error, never null. */
     public List<String> getTagPreferences(String bearerToken) {
         try {
             ResponseEntity<UserTagPreferenceDTO[]> response = restTemplate.exchange(
@@ -146,7 +140,6 @@ public class LibraryServiceClient {
         }
     }
 
-    /** Release-year-preference fetch, mirrors {@link #getTagPreferences(String)}. Empty list on error, never null. */
     public List<String> getReleaseYearPreferences(String bearerToken) {
         try {
             ResponseEntity<UserReleaseYearPreferenceDTO[]> response = restTemplate.exchange(
