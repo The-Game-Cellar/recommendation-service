@@ -128,7 +128,7 @@ class SimilarGameServiceTest {
     void getSimilar_returns_empty_when_library_service_is_down() {
         when(gameServiceClient.getGameById(eq(1), anyString())).thenReturn(sourceGame(1, "The Witcher 3", "RPG"));
         when(libraryServiceClient.getGames("token")).thenReturn(List.of());
-        // getPlatforms and searchByGenre not mocked — Mockito returns empty list by default
+        // getPlatforms and searchByGenre not mocked (Mockito returns empty list by default)
 
         List<RecommendationDTO> result = similarGameService.getSimilar(1, "token", 10);
 

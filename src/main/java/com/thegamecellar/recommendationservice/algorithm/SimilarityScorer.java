@@ -15,7 +15,7 @@ public class SimilarityScorer {
     private static final double HIGH_RATING_THRESHOLD = 8.0;
 
     // Multi-dim scoring weights. Tag still carries the sub-genre signal (souls-like,
-    // open-world, roguelike) but genre weighs in heavier as a sanity bucket — keeps
+    // open-world, roguelike) but genre weighs in heavier as a sanity bucket; keeps
     // off-genre matches that happen to share a single tag from floating up. Theme adds
     // setting fit (fantasy / horror / sci-fi). Rating prior gives a small boost to
     // highly-aggregated games.
@@ -29,7 +29,7 @@ public class SimilarityScorer {
      * (sum of weighted-cosine terms + clamped rating prior); the platform profile is
      * sqrt-normalised in {@code UserProfileBuilder} so {@link #platformBoost} returns a value
      * in [0, 1] too. 0.15 places the platform contribution on the same magnitude as the
-     * rating prior — meaningful but not dominating. Set to 0 to neutralise the entire
+     * rating prior: meaningful but not dominating. Set to 0 to neutralise the entire
      * platform layer without code revert.
      */
     public static final double EPSILON = 0.15;
@@ -87,7 +87,7 @@ public class SimilarityScorer {
 
     /**
      * Cosine similarity between a candidate's binary feature vector and the user's
-     * weighted profile vector. Treats every candidate feature as 1.0 — the magnitude
+     * weighted profile vector. Treats every candidate feature as 1.0; the magnitude
      * of the user side is what carries the signal.
      */
     private static double cosineOverlap(List<String> candidateFeatures, Map<String, Double> profile) {
@@ -122,7 +122,7 @@ public class SimilarityScorer {
      * <ul>
      *   <li>Pure primary-platform release → full primary weight (e.g. {@code 0.75} for a 90/10 PS5/PC user).</li>
      *   <li>Cross-platform release on primary + secondary → average of the two profile weights
-     *       ({@code (0.75 + 0.25) / 2 = 0.50} above) — a structural mild penalty for breadth.</li>
+     *       ({@code (0.75 + 0.25) / 2 = 0.50} above): a structural mild penalty for breadth.</li>
      *   <li>Pure secondary-platform release → secondary weight ({@code 0.25}).</li>
      *   <li>No catalog-platform in the user profile → {@code 0.0}.</li>
      * </ul>
@@ -134,7 +134,7 @@ public class SimilarityScorer {
      * <p>
      * Profile-platforms not present in the candidate's catalog list are simply not in the
      * intersection and don't pull the average down. Catalog platforms not in the profile are
-     * skipped (they contribute nothing — neither boost nor penalty).
+     * skipped (they contribute nothing, neither boost nor penalty).
      */
     /**
      * Binary in/out release-year boost against the user's declared bucket picks. Classifies the

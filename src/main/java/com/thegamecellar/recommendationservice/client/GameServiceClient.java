@@ -41,7 +41,7 @@ public class GameServiceClient {
             );
             return response.getBody();
         } catch (HttpClientErrorException.NotFound ex) {
-            log.info("Game {} not found in Game Service (404) — returning null for graceful skip", igdbId);
+            log.info("Game {} not found in Game Service (404), returning null for graceful skip", igdbId);
             return null;
         } catch (RestClientException ex) {
             String statusHint = (ex instanceof HttpClientErrorException hce) ? " " + hce.getStatusCode() : "";
@@ -111,12 +111,12 @@ public class GameServiceClient {
     /**
      * Single-call uniform random sample of quality games in one genre. Game Service runs an
      * SQL {@code ORDER BY RANDOM() LIMIT N} on rows that pass server-side rating + vote-count
-     * filters, so the result is a true uniform sample over the full quality subset — no page
-     * math, no NULL-tail bias, no pagination quirks.
+     * filters, so the result is a true uniform sample over the full quality subset (no page
+     * math, no NULL-tail bias, no pagination quirks).
      */
     public List<GameDTO> randomQualityByGenre(String genre, java.math.BigDecimal minRating, int minVotes, int limit, String bearerToken) {
         try {
-            // Build URI object (already encoded) and pass to RestTemplate's URI overload —
+            // Build URI object (already encoded) and pass to RestTemplate's URI overload.
             // the String-URL overload runs URI template processing that double-encodes any
             // pre-encoded percent sequences (e.g. "%28" becomes "%2528"), which Tomcat then
             // single-decodes to a literal "%28" in the request param, breaking SQL matches

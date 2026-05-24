@@ -182,8 +182,8 @@ class UserProfileBuilderTest {
 
         UserProfile profile = UserProfileBuilder.buildMultiDim(List.of(loved, ok));
 
-        // 9★ contributes 4, 6★ contributes 1 — 4× ratio, sharper than the prior 1.5× when
-        // raw rating drove the weight. open world should land at 5.
+        // 9★ contributes 4, 6★ contributes 1 (4× ratio, sharper than the prior 1.5× when
+        // raw rating drove the weight). open world should land at 5.
         assertThat(profile.tags()).containsEntry("open world", 5.0);
     }
 
@@ -206,7 +206,7 @@ class UserProfileBuilderTest {
         sparse.setIgdbGameId(1);
         sparse.setRating(8);
         sparse.setGenres(List.of("RPG"));
-        // themes + tags left null — healing may not have completed for this row
+        // themes + tags left null (healing may not have completed for this row)
         UserProfile profile = UserProfileBuilder.buildMultiDim(List.of(sparse));
 
         // Rated 8★ → weight = 8 - 5 = 3.
@@ -236,7 +236,7 @@ class UserProfileBuilderTest {
 
     @Test
     void buildMultiDim_platforms_sum_to_one_after_sqrt_normalisation() {
-        // Arbitrary mix — only invariant is Σ w[p] = 1.0 after normalisation.
+        // Arbitrary mix. Only invariant is Σ w[p] = 1.0 after normalisation.
         UserGameDTO a = ratedOnPlatform(1, 9, "PlayStation 5");
         UserGameDTO b = ratedOnPlatform(2, 8, "PC");
         UserGameDTO c = ratedOnPlatform(3, 7, "Switch");
@@ -306,7 +306,7 @@ class UserProfileBuilderTest {
 
     @Test
     void buildMultiDim_sqrt_softens_skewed_distribution() {
-        // 90 PS5 / 10 PC user — expected sqrt-normalised weights: PS5 ≈ 0.75, PC ≈ 0.25.
+        // 90 PS5 / 10 PC user. Expected sqrt-normalised weights: PS5 ≈ 0.75, PC ≈ 0.25.
         // Build via 90 PS5 games rated 6★ each (weight 1) + 10 PC games rated 6★ each.
         java.util.List<UserGameDTO> games = new java.util.ArrayList<>();
         for (int i = 0; i < 90; i++) games.add(ratedOnPlatform(i, 6, "PlayStation 5"));
@@ -483,7 +483,7 @@ class UserProfileBuilderTest {
 
     @Test
     void buildMultiDim_preferences_and_rated_at_cap_preferences_retain_floor() {
-        // 10 rated games hits PREFERENCE_BLEND_CAP exactly — alpha caps at (1 - FLOOR) = 0.85,
+        // 10 rated games hits PREFERENCE_BLEND_CAP exactly: alpha caps at (1 - FLOOR) = 0.85,
         // so the prior retains FLOOR = 0.15 of mass instead of being discarded entirely.
         List<UserGameDTO> games = List.of(
                 ratedGame(1, 9, "RPG"), ratedGame(2, 9, "RPG"), ratedGame(3, 9, "RPG"),
@@ -506,7 +506,7 @@ class UserProfileBuilderTest {
 
     @Test
     void buildMultiDim_preferences_far_above_cap_still_retain_floor() {
-        // 100 rated games — well past PREFERENCE_BLEND_CAP. Floor still active, so prior
+        // 100 rated games, well past PREFERENCE_BLEND_CAP. Floor still active, so prior
         // contribution stays at exactly FLOOR = 0.15 regardless of how many ratings pile up.
         List<UserGameDTO> games = new java.util.ArrayList<>();
         for (int i = 1; i <= 100; i++) {
@@ -573,7 +573,7 @@ class UserProfileBuilderTest {
     @Test
     void buildMultiDim_four_arg_with_empty_tag_prefs_equivalent_to_three_arg() {
         // The four-arg overload with an empty tagPreferences list must produce the same
-        // tag dimension as the three-arg overload — guards against accidental behavioural
+        // tag dimension as the three-arg overload. Guards against accidental behavioural
         // divergence between the overloads.
         List<UserGameDTO> games = List.of(
                 ratedGameWithTag(1, 9, "RPG", "story rich"),
@@ -595,7 +595,7 @@ class UserProfileBuilderTest {
 
     @Test
     void buildMultiDim_preferences_and_rated_halfway_both_inputs_visible() {
-        // 5 rated games puts alpha at 0.5 exactly — half ratings, half preferences.
+        // 5 rated games puts alpha at 0.5 exactly. Half ratings, half preferences.
         List<UserGameDTO> games = List.of(
                 ratedGame(1, 9, "RPG"),
                 ratedGame(2, 9, "RPG"),

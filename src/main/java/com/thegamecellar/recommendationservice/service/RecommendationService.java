@@ -40,13 +40,13 @@ public class RecommendationService {
     private static final int MAX_SIMILAR_FETCHES = 30;
 
     // Per-request stochastic perturbation added to relevance score before sort + MMR.
-    // Score range is roughly [0, 1] (weighted-cosine sum), so 0.08 = up to 8% noise — enough
+    // Score range is roughly [0, 1] (weighted-cosine sum), so 0.08 = up to 8% noise: enough
     // to swap positions within a same-quality band but not enough to lift a low-relevance
     // candidate over a strong one.
     private static final double SCORE_JITTER = 0.08;
 
     // Soft penalty applied to relevance score for games the client has already shown in this
-    // session (cleared on logout). 0.40 is large relative to the ~[0, 1] score range — pushes
+    // session (cleared on logout). 0.40 is large relative to the ~[0, 1] score range; pushes
     // recently-shown candidates well out of the MMR top picks but does NOT exclude them, so
     // the system degrades gracefully if the candidate pool is otherwise exhausted.
     private static final double SHOWN_PENALTY = 0.40;
@@ -61,7 +61,7 @@ public class RecommendationService {
     private static final int MIN_RATING_COUNT = 10;
 
     // Grouped /personalized layout. Top N rated genres become rows; each row holds K games.
-    // Oversample ratio compensates for the recency / cross-row dedupe filtering — the SQL
+    // Oversample ratio compensates for the recency / cross-row dedupe filtering: the SQL
     // random-quality call returns OVERSAMPLE × PER_ROW rows so we usually have enough fresh
     // games left after filtering to fill the row.
     public static final int GROUPED_TARGET_ROWS = 8;
@@ -140,14 +140,14 @@ public class RecommendationService {
             List<UserPlatformDTO> platformList,
             String bearerToken,
             RecommendationTier tier) {
-        // Sqrt-normalised platform profile derived from rated games — feeds the per-row
+        // Sqrt-normalised platform profile derived from rated games. Feeds the per-row
         // platform-boost ordering inside buildGenreRow so the grouped layout reflects platform
         // skew the same way the flat /personalized layout does. The platformList carries the
         // is_primary flag so a primary-marked platform gets its raw count multiplied before
         // normalisation. Empty when the user has no rated games with a platform value
         // (degrades to no-op via platformBoost = 0).
         Map<String, Double> platformProfile = UserProfileBuilder.buildMultiDim(ratedGames, platformList).platforms();
-        // Genre priority — fractional weighting across the user's RATED games. Each rated game
+        // Genre priority: fractional weighting across the user's RATED games. Each rated game
         // contributes 1.0 vote total, split evenly across its genres (a 4-genre AAA contributes
         // 0.25 to each, a 1-genre indie contributes 1.0 to its single genre). Normalises against
         // IGDB's varying tag-bredd so broad themes like Action / Horror / Fantasy don't drown
@@ -189,7 +189,7 @@ public class RecommendationService {
                     .build());
         }
 
-        // Discovery row — random pick from genres ranked beyond the top 8 so long-tail genres
+        // Discovery row: random pick from genres ranked beyond the top 8 so long-tail genres
         // in the user's library still surface occasionally. Different genre per refresh.
         java.util.List<String> longTail = genrePriority.stream()
                 .filter(g -> !usedGenres.contains(g))
@@ -220,7 +220,7 @@ public class RecommendationService {
                     .fallback(true)
                     .games(fallback)
                     .build());
-            // One popular row is enough — duplicate popular rows would just repeat content.
+            // One popular row is enough; duplicate popular rows would just repeat content.
             break;
         }
 
@@ -259,7 +259,7 @@ public class RecommendationService {
                 .collect(Collectors.toList());
 
         // Platform-boost ordering within the row. Genre is fixed so genre/theme/tag scoring
-        // wouldn't differentiate much within a single-genre row — platform alignment is the
+        // wouldn't differentiate much within a single-genre row; platform alignment is the
         // useful within-row signal. Materialise jittered scores in a map first; calling jitter
         // inside a Comparator violates the symmetric/transitive sort contract.
         if (!platformProfile.isEmpty() && !filtered.isEmpty()) {
@@ -289,7 +289,7 @@ public class RecommendationService {
                 .map(UserGameDTO::getIgdbGameId)
                 .collect(Collectors.toSet());
 
-        // Caller-supplied "recently shown in this session" set used as a soft score penalty —
+        // Caller-supplied "recently shown in this session" set used as a soft score penalty.
         // recently-shown games drop out of top MMR picks but can resurface if the pool runs
         // dry, so the system degrades gracefully without ever returning truly empty.
         Set<Integer> recentlyShown = recentlyShownIds == null ? Set.of() : recentlyShownIds;
@@ -327,7 +327,7 @@ public class RecommendationService {
                                               String bearerToken) {
         UserProfile profile = UserProfileBuilder.buildMultiDim(ratedGames, platformList, genrePreferences, tagPreferences, releaseYearPreferences);
 
-        // Weighted random sampling (Efraimidis-Spirakis A-Res) — higher-rated genres appear more
+        // Weighted random sampling (Efraimidis-Spirakis A-Res): higher-rated genres appear more
         // often but all genres have a chance, preserving variety across requests. Bound at 8 to
         // limit fanout to Game Service.
         List<String> genresToSearch = UserProfileBuilder.sampleWeighted(profile.genres(), 8);
@@ -338,7 +338,7 @@ public class RecommendationService {
 
         // Augment with IGDB similar-games graph from top-rated owned titles. This brings in
         // titles that share fan-graphs with the user's favorites even if they don't share genres
-        // — helps cold-start and surfaces niche neighbors a pure genre search would miss. These
+        // (helps cold-start and surfaces niche neighbors a pure genre search would miss). These
         // candidates bypass the server-side /random-quality gate so we filter them client-side.
         fetchSimilarGraphCandidates(ratedGames, TIER1_RATED_FOR_GRAPH, bearerToken).stream()
                 .filter(this::meetsQualityBar)
@@ -440,7 +440,7 @@ public class RecommendationService {
         List<GameDTO> popular = new ArrayList<>();
 
         if (userPlatforms.isEmpty()) {
-            // No platforms set — fall back to globally popular
+            // No platforms set, fall back to globally popular
             popular.addAll(gameServiceClient.getPopularGames(null, bearerToken));
         } else {
             for (String platform : userPlatforms) {
@@ -529,7 +529,7 @@ public class RecommendationService {
 
     /**
      * Materialize per-candidate jittered + recency-penalized score into a stable map keyed by
-     * igdbId. Must be called once per request before sorting — calling jitter inside a
+     * igdbId. Must be called once per request before sorting; calling jitter inside a
      * Comparator violates the symmetric/transitive sort contract because each lookup re-rolls
      * the random component.
      */
@@ -551,7 +551,7 @@ public class RecommendationService {
     }
 
     /**
-     * Quality gate kept for similar-graph candidates only — the genre-source path is now
+     * Quality gate kept for similar-graph candidates only. The genre-source path is now
      * pre-filtered by Game Service /random-quality at SQL level. Similar-graph entries come
      * from {@code getGameById} on IGDB-supplied neighbour ids, so they bypass the server gate
      * and need a client-side check before they enter the scoring pool.

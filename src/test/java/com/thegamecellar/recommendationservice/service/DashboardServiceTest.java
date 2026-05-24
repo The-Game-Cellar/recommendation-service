@@ -86,7 +86,7 @@ class DashboardServiceTest {
     @Test
     void getDashboard_skips_failed_seed_instead_of_crashing() {
         // Only 1 seed is picked (limit 1 after shuffle). If that seed's similar-game call
-        // throws, becauseYouLiked must be empty — not an exception.
+        // throws, becauseYouLiked must be empty, not an exception.
         when(recommendationService.getPersonalized(eq("token"), eq(10), isNull())).thenReturn(List.of());
         when(wildCardService.getWildCard("token", 5)).thenReturn(List.of());
         when(libraryServiceClient.getGames("token")).thenReturn(List.of(
