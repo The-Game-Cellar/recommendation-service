@@ -23,8 +23,7 @@ public class SimilarityScorer {
     // 0.15 puts platform on the same magnitude as the rating prior. Set 0 to neutralise the layer.
     public static final double EPSILON = 0.15;
 
-    // Mirrors EPSILON so release-year match lifts equally. Set 0 to disable the layer.
-    public static final double RELEASE_YEAR_EPSILON = 0.15;
+    public static final double RELEASE_YEAR_EPSILON = 0.25;
 
     private SimilarityScorer() {}
 
