@@ -4,358 +4,166 @@ import com.thegamecellar.recommendationservice.client.GameServiceClient;
 import com.thegamecellar.recommendationservice.client.LibraryServiceClient;
 import com.thegamecellar.recommendationservice.model.dto.RecommendationDTO;
 import com.thegamecellar.recommendationservice.model.dto.game.GameDTO;
-import com.thegamecellar.recommendationservice.model.dto.library.UserGameDTO;
 import com.thegamecellar.recommendationservice.model.dto.library.UserPlatformDTO;
+import com.thegamecellar.recommendationservice.model.entity.UserCandidatePool;
+import com.thegamecellar.recommendationservice.repository.UserCandidatePoolRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.isNull;
-import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class RecommendationServiceTest {
 
-    @Mock
-    private GameServiceClient gameServiceClient;
+    private static final int POOL_SIZE = 1000;
+    private static final int REFILL_PCT = 50;
+    private static final long STALE_HOURS = 24;
 
-    @Mock
-    private LibraryServiceClient libraryServiceClient;
+    @Mock private UserCandidatePoolRepository poolRepository;
+    @Mock private UserProfileCache profileCache;
+    @Mock private ComputeEnqueuer computeEnqueuer;
+    @Mock private GameServiceClient gameServiceClient;
+    @Mock private LibraryServiceClient libraryServiceClient;
 
-    @InjectMocks
-    private RecommendationService recommendationService;
+    private RecommendationService service;
 
-    // --- Tier 3: new user, no rated games ---
+    @BeforeEach
+    void setUp() {
+        service = new RecommendationService(
+                poolRepository, profileCache, computeEnqueuer, gameServiceClient, libraryServiceClient,
+                POOL_SIZE, REFILL_PCT, STALE_HOURS);
+    }
 
     @Test
-    void getPersonalized_returns_tier3_for_new_user_with_no_rated_games() {
+    void coldStart_emptyPool_enqueuesAndServesTier3() {
+        when(poolRepository.findByUserId("u1")).thenReturn(List.of());
+        when(libraryServiceClient.getPlatforms("token")).thenReturn(List.of(platform("PC")));
         when(libraryServiceClient.getGames("token")).thenReturn(List.of());
-        when(libraryServiceClient.getPlatforms("token")).thenReturn(List.of(platform("PC")));
-        when(gameServiceClient.getPopularGames(eq("PC"), anyString())).thenReturn(List.of(game(1, "Popular Game")));
+        when(gameServiceClient.getPopularGames(eq("PC"), anyString()))
+                .thenReturn(List.of(game(1, "Popular Game", "Action")));
 
-        List<RecommendationDTO> result = recommendationService.getPersonalized("token", 10);
-
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getTier()).isEqualTo(3);
-        assertThat(result.get(0).getReason()).isEqualTo("Popular on your platforms");
-    }
-
-    @Test
-    void getPersonalized_tier3_falls_back_to_global_popular_when_no_platforms() {
-        when(libraryServiceClient.getGames("token")).thenReturn(List.of());
-        when(libraryServiceClient.getPlatforms("token")).thenReturn(List.of());
-        when(gameServiceClient.getPopularGames(isNull(), anyString())).thenReturn(List.of(game(1, "Global Popular")));
-
-        List<RecommendationDTO> result = recommendationService.getPersonalized("token", 10);
-
-        assertThat(result).hasSize(1);
-    }
-
-    // --- Tier 2: 1-4 rated games ---
-
-    @Test
-    void getPersonalized_returns_tier2_for_user_with_few_rated_games() {
-        UserGameDTO rated = ratedGame(1, 8, "RPG");
-        when(libraryServiceClient.getGames("token")).thenReturn(List.of(rated));
-        when(libraryServiceClient.getPlatforms("token")).thenReturn(List.of(platform("PC")));
-        when(gameServiceClient.randomQualityByGenre(eq("RPG"), any(), anyInt(), anyInt(), anyString())).thenReturn(List.of(game(2, "Popular RPG", "RPG")));
-
-        List<RecommendationDTO> result = recommendationService.getPersonalized("token", 10);
-
-        assertThat(result.get(0).getTier()).isEqualTo(2);
-        assertThat(result.get(0).getReason()).isEqualTo("Popular in your genres");
-    }
-
-    // --- Tier 1: 5+ rated games ---
-
-    @Test
-    void getPersonalized_returns_tier1_for_user_with_5_or_more_rated_games() {
-        List<UserGameDTO> ratedGames = List.of(
-                ratedGame(1, 9, "RPG"), ratedGame(2, 8, "RPG"), ratedGame(3, 7, "RPG"),
-                ratedGame(4, 9, "RPG"), ratedGame(5, 8, "RPG")
-        );
-        when(libraryServiceClient.getGames("token")).thenReturn(ratedGames);
-        when(libraryServiceClient.getPlatforms("token")).thenReturn(List.of(platform("PC")));
-        when(gameServiceClient.randomQualityByGenre(eq("RPG"), any(), anyInt(), anyInt(), anyString())).thenReturn(List.of(game(6, "New RPG", "RPG")));
-
-        List<RecommendationDTO> result = recommendationService.getPersonalized("token", 10);
-
-        assertThat(result.get(0).getTier()).isEqualTo(1);
-        assertThat(result.get(0).getReason()).isEqualTo("Based on your ratings");
-    }
-
-    // --- Collection exclusion ---
-
-    @Test
-    void getPersonalized_excludes_games_already_in_collection() {
-        when(libraryServiceClient.getGames("token")).thenReturn(List.of(ownedGame(1)));
-        when(libraryServiceClient.getPlatforms("token")).thenReturn(List.of(platform("PC")));
-        when(gameServiceClient.getPopularGames(eq("PC"), anyString())).thenReturn(
-                List.of(game(1, "Owned Game"), game(2, "New Game"))
-        );
-
-        List<RecommendationDTO> result = recommendationService.getPersonalized("token", 10);
-
-        assertThat(result).noneMatch(r -> r.getIgdbId() == 1);
-        assertThat(result).anyMatch(r -> r.getIgdbId() == 2);
-    }
-
-    // --- IGDB similar-games graph augmentation ---
-
-    @Test
-    void getPersonalized_tier1_includes_candidates_from_similar_games_graph() {
-        // Top-rated game (id 1) has IGDB similar_games pointing at 100 + 101.
-        UserGameDTO topRated = ratedGame(1, 9, "RPG");
-        when(libraryServiceClient.getGames("token")).thenReturn(List.of(
-                topRated, ratedGame(2, 8, "RPG"), ratedGame(3, 7, "RPG"),
-                ratedGame(4, 9, "RPG"), ratedGame(5, 8, "RPG")
-        ));
-        when(libraryServiceClient.getPlatforms("token")).thenReturn(List.of(platform("PC")));
-
-        // Genre search returns nothing; only graph candidates should populate the pool.
-        when(gameServiceClient.randomQualityByGenre(eq("RPG"), any(), anyInt(), anyInt(), anyString()))
-                .thenReturn(List.of());
-
-        // Other rated titles have no cached game data yet (worker still backfilling).
-        lenient().when(gameServiceClient.getGameById(anyInt(), anyString())).thenReturn(null);
-
-        // Source game carries similarGameIds; the two graph fetches return real games.
-        GameDTO source = game(1, "Source RPG", "RPG");
-        source.setSimilarGameIds(List.of(100, 101));
-        lenient().when(gameServiceClient.getGameById(eq(1), anyString())).thenReturn(source);
-        lenient().when(gameServiceClient.getGameById(eq(100), anyString())).thenReturn(game(100, "Graph Neighbor A", "RPG"));
-        lenient().when(gameServiceClient.getGameById(eq(101), anyString())).thenReturn(game(101, "Graph Neighbor B", "RPG"));
-
-        List<RecommendationDTO> result = recommendationService.getPersonalized("token", 10);
-
-        assertThat(result).extracting(RecommendationDTO::getIgdbId).contains(100, 101);
-        assertThat(result).allMatch(r -> r.getTier() == 1);
-    }
-
-    @Test
-    void getPersonalized_tier2_includes_candidates_from_similar_games_graph() {
-        UserGameDTO topRated = ratedGame(1, 9, "RPG");
-        when(libraryServiceClient.getGames("token")).thenReturn(List.of(topRated));
-        when(libraryServiceClient.getPlatforms("token")).thenReturn(List.of(platform("PC")));
-        when(gameServiceClient.randomQualityByGenre(eq("RPG"), any(), anyInt(), anyInt(), anyString()))
-                .thenReturn(List.of());
-
-        lenient().when(gameServiceClient.getGameById(anyInt(), anyString())).thenReturn(null);
-
-        GameDTO source = game(1, "Source RPG", "RPG");
-        source.setSimilarGameIds(List.of(200));
-        lenient().when(gameServiceClient.getGameById(eq(1), anyString())).thenReturn(source);
-        lenient().when(gameServiceClient.getGameById(eq(200), anyString())).thenReturn(game(200, "Graph Neighbor", "RPG"));
-
-        List<RecommendationDTO> result = recommendationService.getPersonalized("token", 10);
-
-        assertThat(result).extracting(RecommendationDTO::getIgdbId).contains(200);
-        assertThat(result).allMatch(r -> r.getTier() == 2);
-    }
-
-    // --- Status-aware filter on rated-set ---
-
-    @Test
-    void getPersonalized_excludes_dropped_games_from_tier_selection_and_profile() {
-        // 5 rated games, all DROPPED → filtered out → tier 3 popular fallback.
-        List<UserGameDTO> allDropped = List.of(
-                ratedGameWithStatus(1, 9, "DROPPED", "RPG"),
-                ratedGameWithStatus(2, 8, "DROPPED", "RPG"),
-                ratedGameWithStatus(3, 9, "DROPPED", "Action"),
-                ratedGameWithStatus(4, 7, "DROPPED", "RPG"),
-                ratedGameWithStatus(5, 8, "DROPPED", "Action")
-        );
-        when(libraryServiceClient.getGames("token")).thenReturn(allDropped);
-        when(libraryServiceClient.getPlatforms("token")).thenReturn(List.of(platform("PC")));
-        when(gameServiceClient.getPopularGames(eq("PC"), anyString())).thenReturn(List.of(game(99, "Popular Fallback")));
-
-        List<RecommendationDTO> result = recommendationService.getPersonalized("token", 10);
+        List<RecommendationDTO> result = service.getPersonalized("u1", "token", 10, null);
 
         assertThat(result).hasSize(1);
         assertThat(result.get(0).getTier()).isEqualTo(3);
-        assertThat(result.get(0).getReason()).isEqualTo("Popular on your platforms");
+        verify(computeEnqueuer).enqueue("u1");
     }
 
     @Test
-    void getPersonalized_excludes_wishlist_games_from_tier_selection() {
-        // 5 rated WISHLIST entries → all filtered → tier 3.
-        List<UserGameDTO> wishlist = List.of(
-                ratedGameWithStatus(1, 9, "WISHLIST", "RPG"),
-                ratedGameWithStatus(2, 8, "WISHLIST", "RPG"),
-                ratedGameWithStatus(3, 7, "WISHLIST", "RPG"),
-                ratedGameWithStatus(4, 9, "WISHLIST", "RPG"),
-                ratedGameWithStatus(5, 8, "WISHLIST", "RPG")
-        );
-        when(libraryServiceClient.getGames("token")).thenReturn(wishlist);
-        when(libraryServiceClient.getPlatforms("token")).thenReturn(List.of(platform("PC")));
-        when(gameServiceClient.getPopularGames(eq("PC"), anyString())).thenReturn(List.of(game(99, "Popular Fallback")));
+    void warmPool_consecutiveCalls_rotateOrdering() {
+        List<UserCandidatePool> pool = poolOfSize(50, "u1");
+        when(poolRepository.findByUserId("u1")).thenReturn(pool);
 
-        List<RecommendationDTO> result = recommendationService.getPersonalized("token", 10);
+        List<Integer> first = service.getPersonalized("u1", "token", 10, Set.of())
+                .stream().map(RecommendationDTO::getIgdbId).toList();
 
-        assertThat(result.get(0).getTier()).isEqualTo(3);
+        boolean anyDifferent = false;
+        for (int i = 0; i < 15; i++) {
+            List<Integer> next = service.getPersonalized("u1", "token", 10, Set.of())
+                    .stream().map(RecommendationDTO::getIgdbId).toList();
+            if (!first.equals(next)) {
+                anyDifferent = true;
+                break;
+            }
+        }
+        assertThat(anyDifferent).as("jitter must produce different ordering across calls").isTrue();
     }
 
     @Test
-    void getPersonalized_keeps_eligible_statuses_in_tier_selection() {
-        // Mixed library: 3 eligible (COMPLETED/PLAYING/BACKLOG/DUSTY) + 2 DROPPED.
-        // Eligible count = 3 → tier 2.
-        List<UserGameDTO> mixed = List.of(
-                ratedGameWithStatus(1, 9, "COMPLETED", "RPG"),
-                ratedGameWithStatus(2, 8, "PLAYING", "RPG"),
-                ratedGameWithStatus(3, 9, "BACKLOG", "RPG"),
-                ratedGameWithStatus(4, 9, "DROPPED", "Strategy"),
-                ratedGameWithStatus(5, 8, "DROPPED", "Strategy")
-        );
-        when(libraryServiceClient.getGames("token")).thenReturn(mixed);
-        when(libraryServiceClient.getPlatforms("token")).thenReturn(List.of(platform("PC")));
-        when(gameServiceClient.randomQualityByGenre(eq("RPG"), any(), anyInt(), anyInt(), anyString()))
-                .thenReturn(List.of(game(10, "RPG result", "RPG")));
-        // Strategy genre should NOT be queried; DROPPED games filtered out before profile build.
-        lenient().when(gameServiceClient.randomQualityByGenre(eq("Strategy"), any(), anyInt(), anyInt(), anyString()))
-                .thenReturn(List.of(game(20, "Strategy result", "Strategy")));
+    void warmPool_shownPenaltyPushesShownIdsDown() {
+        List<UserCandidatePool> pool = poolOfSize(20, "u1");
+        when(poolRepository.findByUserId("u1")).thenReturn(pool);
 
-        List<RecommendationDTO> result = recommendationService.getPersonalized("token", 10);
-
-        assertThat(result.get(0).getTier()).isEqualTo(2);
-        assertThat(result).extracting(RecommendationDTO::getIgdbId).doesNotContain(20);
-    }
-
-    @Test
-    void getPersonalized_treats_null_status_as_eligible_for_legacy_rows() {
-        // Legacy rated row without status; keep it eligible so we don't silently drop it.
-        UserGameDTO rated = ratedGame(1, 8, "RPG");
-        rated.setStatus(null);
-        when(libraryServiceClient.getGames("token")).thenReturn(List.of(rated));
-        when(libraryServiceClient.getPlatforms("token")).thenReturn(List.of(platform("PC")));
-        when(gameServiceClient.randomQualityByGenre(eq("RPG"), any(), anyInt(), anyInt(), anyString()))
-                .thenReturn(List.of(game(2, "RPG result", "RPG")));
-
-        List<RecommendationDTO> result = recommendationService.getPersonalized("token", 10);
-
-        assertThat(result.get(0).getTier()).isEqualTo(2);
-    }
-
-    // --- Platform weighting ---
-
-    @Test
-    void getPersonalized_tier1_favours_primary_platform_in_output() {
-        // User: 5 rated PS5 games (rating 9), 1 rated PC game (rating 9).
-        // Sqrt-normalised platform weights: PS5 ≈ 0.91, PC ≈ 0.41 → normalised PS5 ≈ 0.69, PC ≈ 0.31.
-        // Both platforms connected via onboarding so matchesAnyPlatform passes both.
-        List<UserGameDTO> ratedGames = List.of(
-                ratedOnPlatform(1, 9, "PlayStation 5", "RPG"),
-                ratedOnPlatform(2, 9, "PlayStation 5", "RPG"),
-                ratedOnPlatform(3, 9, "PlayStation 5", "RPG"),
-                ratedOnPlatform(4, 9, "PlayStation 5", "RPG"),
-                ratedOnPlatform(5, 9, "PlayStation 5", "RPG"),
-                ratedOnPlatform(6, 9, "PC", "RPG")
-        );
-        when(libraryServiceClient.getGames("token")).thenReturn(ratedGames);
-        when(libraryServiceClient.getPlatforms("token")).thenReturn(List.of(platform("PlayStation 5"), platform("PC")));
-
-        // Two RPG candidates with identical genre/theme/tag profile but different platforms.
-        // PS5-exclusive should outscore PC-exclusive due to platformBoost.
-        GameDTO ps5Candidate = gameOnPlatforms(100, "PS5 RPG", List.of("PlayStation 5"), "RPG");
-        GameDTO pcCandidate = gameOnPlatforms(101, "PC RPG", List.of("PC"), "RPG");
-        when(gameServiceClient.randomQualityByGenre(eq("RPG"), any(), anyInt(), anyInt(), anyString()))
-                .thenReturn(List.of(ps5Candidate, pcCandidate));
-
-        // Run multiple times: even with score jitter, PS5 should land first the vast majority.
-        int ps5First = 0;
-        int trials = 50;
+        // Mark the top-3-by-base-score (ids 0,1,2) as recently shown -> penalty drops them.
+        Set<Integer> shown = Set.of(0, 1, 2);
+        int shownInTop3 = 0;
+        int trials = 20;
         for (int i = 0; i < trials; i++) {
-            List<RecommendationDTO> result = recommendationService.getPersonalized("token", 10);
-            if (!result.isEmpty() && result.get(0).getIgdbId() == 100) ps5First++;
+            List<Integer> top3 = service.getPersonalized("u1", "token", 3, shown)
+                    .stream().map(RecommendationDTO::getIgdbId).toList();
+            for (Integer id : top3) {
+                if (shown.contains(id)) shownInTop3++;
+            }
         }
-
-        // platformBoost contribution = 0.15 * (0.69 - 0.31) ≈ 0.057, jitter range = 0.08; close
-        // call but PS5 should still dominate. Assert majority lower-bound.
-        assertThat(ps5First).as("PS5-exclusive should rank first more often than PC-exclusive")
-                .isGreaterThan(trials / 2);
+        // 0.40 penalty vs 0.08 jitter -> shown ids should rarely surface in top-3.
+        assertThat(shownInTop3).as("shown ids should be rare in top-3").isLessThan(trials);
     }
 
     @Test
-    void getPersonalized_single_platform_user_unchanged_by_platform_weighting() {
-        // User has only PC games rated → sqrt-normalised PC weight = 1.0 → constant boost across
-        // all candidates that pass the filter → ranking determined by genre/theme/tag only.
-        List<UserGameDTO> ratedGames = List.of(
-                ratedOnPlatform(1, 9, "PC", "RPG"),
-                ratedOnPlatform(2, 9, "PC", "RPG"),
-                ratedOnPlatform(3, 9, "PC", "RPG"),
-                ratedOnPlatform(4, 9, "PC", "RPG"),
-                ratedOnPlatform(5, 9, "PC", "RPG")
-        );
-        when(libraryServiceClient.getGames("token")).thenReturn(ratedGames);
-        when(libraryServiceClient.getPlatforms("token")).thenReturn(List.of(platform("PC")));
-        when(gameServiceClient.randomQualityByGenre(eq("RPG"), any(), anyInt(), anyInt(), anyString()))
-                .thenReturn(List.of(gameOnPlatforms(100, "PC RPG", List.of("PC"), "RPG")));
+    void warmPool_refillTriggersAt50PercentDepletion() {
+        List<UserCandidatePool> pool = poolOfSize(100, "u1");
+        when(poolRepository.findByUserId("u1")).thenReturn(pool);
 
-        List<RecommendationDTO> result = recommendationService.getPersonalized("token", 10);
+        // 50% of POOL_SIZE = 500. We need 500 ids in shown that are also in the pool.
+        // Pool ids run 0..99, so use ids 0..499 (only 0..99 intersect; not enough).
+        // Use a pool that matches POOL_SIZE for clean intersection counting.
+        List<UserCandidatePool> bigPool = poolOfSize(POOL_SIZE, "u1");
+        when(poolRepository.findByUserId("u1")).thenReturn(bigPool);
+        Set<Integer> shown = new HashSet<>(IntStream.range(0, 500).boxed().toList());
 
-        // Sanity: the only candidate makes it through.
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getIgdbId()).isEqualTo(100);
-        assertThat(result.get(0).getTier()).isEqualTo(1);
+        service.getPersonalized("u1", "token", 10, shown);
+
+        verify(computeEnqueuer, atLeastOnce()).enqueue("u1");
     }
-
-    // --- Library service down ---
 
     @Test
-    void getPersonalized_returns_empty_when_library_service_is_down() {
-        when(libraryServiceClient.getGames("token")).thenReturn(List.of());
-        // getPlatforms and getPopularGames not mocked (Mockito returns empty list by default)
+    void warmPool_belowRefillThreshold_doesNotEnqueue() {
+        List<UserCandidatePool> bigPool = poolOfSize(POOL_SIZE, "u1");
+        when(poolRepository.findByUserId("u1")).thenReturn(bigPool);
+        Set<Integer> shown = new HashSet<>(IntStream.range(0, 100).boxed().toList()); // 10% depletion
 
-        List<RecommendationDTO> result = recommendationService.getPersonalized("token", 10);
+        service.getPersonalized("u1", "token", 10, shown);
 
-        assertThat(result).isEmpty();
+        verify(computeEnqueuer, never()).enqueue("u1");
     }
 
-    // --- Helpers ---
+    @Test
+    void warmPool_stalePoolEnqueues() {
+        List<UserCandidatePool> pool = poolOfSize(20, "u1");
+        LocalDateTime ancient = LocalDateTime.now().minusDays(2);
+        pool.forEach(r -> r.setComputedAt(ancient));
+        when(poolRepository.findByUserId("u1")).thenReturn(pool);
 
-    private UserGameDTO ratedGame(int igdbId, int rating, String... genres) {
-        UserGameDTO game = new UserGameDTO();
-        game.setIgdbGameId(igdbId);
-        game.setRating(rating);
-        game.setStatus("COMPLETED");
-        if (genres.length > 0) {
-            game.setGenres(List.of(genres));
+        service.getPersonalized("u1", "token", 10, Set.of());
+
+        verify(computeEnqueuer, times(1)).enqueue("u1");
+    }
+
+    private List<UserCandidatePool> poolOfSize(int n, String userId) {
+        List<UserCandidatePool> pool = new ArrayList<>(n);
+        for (int i = 0; i < n; i++) {
+            pool.add(UserCandidatePool.builder()
+                    .userId(userId)
+                    .igdbId(i)
+                    .baseScore(BigDecimal.valueOf(1.0 - (double) i / n).setScale(4, java.math.RoundingMode.HALF_UP))
+                    .tier((short) 1)
+                    .name("Game " + i)
+                    .backgroundImage(null)
+                    .rating(BigDecimal.valueOf(8.0))
+                    .genres(List.of(i % 2 == 0 ? "Action" : "RPG"))
+                    .platforms(List.of("PC"))
+                    .computedAt(LocalDateTime.now())
+                    .build());
         }
-        return game;
-    }
-
-    private UserGameDTO ratedGameWithStatus(int igdbId, int rating, String status, String... genres) {
-        UserGameDTO game = ratedGame(igdbId, rating, genres);
-        game.setStatus(status);
-        return game;
-    }
-
-    private UserGameDTO ratedOnPlatform(int igdbId, int rating, String platform, String... genres) {
-        UserGameDTO game = ratedGame(igdbId, rating, genres);
-        game.setPlatform(platform);
-        return game;
-    }
-
-    private GameDTO gameOnPlatforms(int igdbId, String name, List<String> platforms, String... genres) {
-        GameDTO g = game(igdbId, name, genres);
-        g.setPlatforms(platforms);
-        return g;
-    }
-
-    private UserGameDTO ownedGame(int igdbId) {
-        UserGameDTO game = new UserGameDTO();
-        game.setIgdbGameId(igdbId);
-        return game;
+        return pool;
     }
 
     private UserPlatformDTO platform(String name) {
@@ -364,18 +172,13 @@ class RecommendationServiceTest {
         return p;
     }
 
-    private GameDTO game(int rawgId, String name, String... genres) {
-        GameDTO game = new GameDTO();
-        game.setIgdbId(rawgId);
-        game.setName(name);
-        game.setRating(BigDecimal.valueOf(8.0));
-        game.setTotalRating(BigDecimal.valueOf(8.0));
-        game.setTotalRatingCount(100);
-        game.setPlatforms(List.of("PC"));
-        if (genres.length > 0) {
-            game.setGenres(List.of(genres));
-        }
-        return game;
+    private GameDTO game(int igdbId, String name, String... genres) {
+        GameDTO g = new GameDTO();
+        g.setIgdbId(igdbId);
+        g.setName(name);
+        g.setRating(BigDecimal.valueOf(8.0));
+        g.setPlatforms(List.of("PC"));
+        if (genres.length > 0) g.setGenres(List.of(genres));
+        return g;
     }
-
 }

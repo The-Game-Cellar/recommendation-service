@@ -1,15 +1,15 @@
 package com.thegamecellar.recommendationservice.service;
 
 import com.thegamecellar.recommendationservice.client.GameServiceClient;
-import com.thegamecellar.recommendationservice.client.LibraryServiceClient;
 import com.thegamecellar.recommendationservice.model.dto.RecommendationDTO;
 import com.thegamecellar.recommendationservice.model.dto.game.GameDTO;
-import com.thegamecellar.recommendationservice.model.dto.library.UserGameDTO;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -22,51 +22,37 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class WildCardServiceTest {
 
-    @Mock
-    private GameServiceClient gameServiceClient;
+    @Mock private GameServiceClient gameServiceClient;
+    @Mock private UserStateCache userStateCache;
 
-    @Mock
-    private LibraryServiceClient libraryServiceClient;
-
-    @InjectMocks
     private WildCardService wildCardService;
 
-    @Test
-    void getWildCard_excludes_games_already_in_collection() {
-        when(libraryServiceClient.getGames("token")).thenReturn(List.of(ownedGame(1)));
-        when(gameServiceClient.getRandomFromCache(anyInt(), anyString())).thenReturn(List.of(game(1, "Owned Game"), game(2, "New Game")));
+    @BeforeEach
+    void setUp() {
+        wildCardService = new WildCardService(gameServiceClient, userStateCache);
+        SecurityContextHolder.clearContext();
+    }
 
-        List<RecommendationDTO> result = wildCardService.getWildCard("token", 10);
-
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getName()).isEqualTo("New Game");
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
     }
 
     @Test
-    void getWildCard_draws_from_cache_regardless_of_platform() {
-        when(libraryServiceClient.getGames("token")).thenReturn(List.of());
-        when(gameServiceClient.getRandomFromCache(anyInt(), anyString())).thenReturn(List.of(game(1, "PC Game"), game(2, "Console Game")));
-
-        List<RecommendationDTO> result = wildCardService.getWildCard("token", 10);
-
-        assertThat(result).hasSize(2);
-    }
-
-    @Test
-    void getWildCard_respects_limit() {
-        when(libraryServiceClient.getGames("token")).thenReturn(List.of());
-        when(gameServiceClient.getRandomFromCache(anyInt(), anyString())).thenReturn(
-                List.of(game(1, "A"), game(2, "B"), game(3, "C"), game(4, "D"), game(5, "E"))
-        );
+    void getWildCard_returnsPicks_unauthenticated_caller_skipsCache() {
+        // No JwtAuthenticationToken in SecurityContext -> currentUserId() returns null -> empty
+        // owned + platforms -> matchesAnyPlatform short-circuits true for every candidate.
+        when(gameServiceClient.getRandomFromCache(anyInt(), anyString()))
+                .thenReturn(List.of(game(1, "First"), game(2, "Second"), game(3, "Third")));
 
         List<RecommendationDTO> result = wildCardService.getWildCard("token", 3);
 
         assertThat(result).hasSize(3);
+        assertThat(result).extracting(RecommendationDTO::getIgdbId).containsExactly(1, 2, 3);
     }
 
     @Test
-    void getWildCard_returns_empty_when_cache_is_empty() {
-        when(libraryServiceClient.getGames("token")).thenReturn(List.of());
+    void getWildCard_emptyCatalog_returnsEmpty() {
         when(gameServiceClient.getRandomFromCache(anyInt(), anyString())).thenReturn(List.of());
 
         List<RecommendationDTO> result = wildCardService.getWildCard("token", 10);
@@ -75,27 +61,37 @@ class WildCardServiceTest {
     }
 
     @Test
-    void getWildCard_returns_wildcard_reason() {
-        when(libraryServiceClient.getGames("token")).thenReturn(List.of());
-        when(gameServiceClient.getRandomFromCache(anyInt(), anyString())).thenReturn(List.of(game(1, "Some Game")));
+    void getWildCard_setsReason() {
+        when(gameServiceClient.getRandomFromCache(anyInt(), anyString()))
+                .thenReturn(List.of(game(1, "Some Game")));
 
         List<RecommendationDTO> result = wildCardService.getWildCard("token", 10);
 
+        assertThat(result).hasSize(1);
         assertThat(result.get(0).getReason()).isEqualTo("Wild Card - something different");
     }
 
-    private GameDTO game(int rawgId, String name) {
-        GameDTO game = new GameDTO();
-        game.setIgdbId(rawgId);
-        game.setName(name);
-        game.setRating(BigDecimal.valueOf(8.0));
-        game.setPlatforms(List.of("PC"));
-        return game;
+    @Test
+    void getWildCard_filtersNullIds() {
+        GameDTO valid = game(1, "Valid");
+        GameDTO nullId = new GameDTO();
+        nullId.setName("No id");
+        nullId.setPlatforms(List.of("PC"));
+        when(gameServiceClient.getRandomFromCache(anyInt(), anyString()))
+                .thenReturn(List.of(valid, nullId));
+
+        List<RecommendationDTO> result = wildCardService.getWildCard("token", 10);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getIgdbId()).isEqualTo(1);
     }
 
-    private UserGameDTO ownedGame(int rawgId) {
-        UserGameDTO game = new UserGameDTO();
-        game.setIgdbGameId(rawgId);
-        return game;
+    private GameDTO game(int igdbId, String name) {
+        GameDTO g = new GameDTO();
+        g.setIgdbId(igdbId);
+        g.setName(name);
+        g.setRating(BigDecimal.valueOf(8.0));
+        g.setPlatforms(List.of("PC"));
+        return g;
     }
 }

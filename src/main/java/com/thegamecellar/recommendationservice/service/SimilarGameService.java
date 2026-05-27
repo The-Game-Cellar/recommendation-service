@@ -1,26 +1,26 @@
 package com.thegamecellar.recommendationservice.service;
 
-import com.thegamecellar.recommendationservice.algorithm.SimilarityScorer;
 import com.thegamecellar.recommendationservice.client.GameServiceClient;
 import com.thegamecellar.recommendationservice.client.LibraryServiceClient;
 import com.thegamecellar.recommendationservice.model.dto.RecommendationDTO;
 import com.thegamecellar.recommendationservice.model.dto.game.GameDTO;
 import com.thegamecellar.recommendationservice.model.dto.library.UserGameDTO;
 import com.thegamecellar.recommendationservice.model.dto.library.UserPlatformDTO;
+import com.thegamecellar.recommendationservice.util.JwtUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
+// /similar = pre-computed catalog answer from game-service (game_similarities). Same answer
+// for every viewer. /because-you-liked composes /similar with a per-user library + platform
+// filter (rec-service tier-of-responsibility: anything user-state-aware lives here).
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -28,73 +28,50 @@ public class SimilarGameService {
 
     private final GameServiceClient gameServiceClient;
     private final LibraryServiceClient libraryServiceClient;
+    private final UserStateCache userStateCache;
 
     public List<RecommendationDTO> getSimilar(Integer igdbId, String bearerToken, int limit) {
-        return getRecommendationsBasedOnGame(igdbId, bearerToken, limit, "Similar to ");
+        GameDTO source = gameServiceClient.getGameById(igdbId, bearerToken);
+        if (source == null) return Collections.emptyList();
+        String reason = "Similar to " + (source.getName() == null ? "this game" : source.getName());
+        List<GameDTO> picks = gameServiceClient.getSimilarGames(igdbId, limit, bearerToken);
+        return picks.stream()
+                .filter(g -> g != null && g.getIgdbId() != null && !g.getIgdbId().equals(igdbId))
+                .map(g -> toDTO(g, reason))
+                .toList();
     }
 
     public List<RecommendationDTO> getBecauseYouLiked(Integer igdbId, String bearerToken, int limit) {
-        return getRecommendationsBasedOnGame(igdbId, bearerToken, limit, "Because you liked ");
-    }
+        GameDTO source = gameServiceClient.getGameById(igdbId, bearerToken);
+        if (source == null) return Collections.emptyList();
+        String reason = "Because you liked " + (source.getName() == null ? "this game" : source.getName());
 
-    private List<RecommendationDTO> getRecommendationsBasedOnGame(Integer igdbId, String bearerToken,
-                                                                   int limit, String reasonPrefix) {
-        GameDTO sourceGame = gameServiceClient.getGameById(igdbId, bearerToken);
-        if (sourceGame == null || sourceGame.getGenres() == null || sourceGame.getGenres().isEmpty()) {
-            log.warn("Could not find game {} or it has no genres", igdbId);
-            return Collections.emptyList();
-        }
+        String userId = currentUserId();
+        Set<Integer> ownedGameIds = userId != null
+                ? userStateCache.getLibraryIgdbIds(userId, bearerToken)
+                : getOwnedGameIds(bearerToken);
+        Set<String> userPlatforms = userId != null
+                ? userStateCache.getPlatformNames(userId, bearerToken)
+                : getUserPlatforms(bearerToken);
 
-        Set<Integer> ownedGameIds = getOwnedGameIds(bearerToken);
-        Set<String> userPlatforms = getUserPlatforms(bearerToken);
-
-        Map<String, Double> genreProfile = sourceGame.getGenres().stream()
-                .distinct()
-                .collect(Collectors.toMap(g -> g, g -> 1.0));
-
-        List<GameDTO> candidates = fetchCandidates(new ArrayList<>(genreProfile.keySet()), bearerToken);
-
-        return rankAndSlice(candidates, ownedGameIds, userPlatforms, genreProfile, igdbId,
-                reasonPrefix + sourceGame.getName(), limit);
-    }
-
-    private List<GameDTO> fetchCandidates(List<String> genres, String bearerToken) {
-        List<GameDTO> candidates = new ArrayList<>();
-        for (String genre : genres) {
-            if (genre != null && !genre.isBlank()) {
-                int page = ThreadLocalRandom.current().nextInt(0, 20);
-                candidates.addAll(gameServiceClient.searchByGenre(genre, null, page, bearerToken, true));
-            }
-        }
-        return candidates;
-    }
-
-    private List<RecommendationDTO> rankAndSlice(List<GameDTO> candidates,
-                                                  Set<Integer> ownedGameIds,
-                                                  Set<String> userPlatforms,
-                                                  Map<String, Double> genreProfile,
-                                                  Integer excludeId,
-                                                  String reason,
-                                                  int limit) {
-        Set<Integer> seen = new HashSet<>();
-        List<GameDTO> filtered = candidates.stream()
+        // Over-fetch so library + platform filter still leaves us with `limit` results.
+        List<GameDTO> picks = gameServiceClient.getSimilarGames(igdbId, Math.max(limit * 3, 30), bearerToken);
+        return picks.stream()
                 .filter(g -> g != null && g.getIgdbId() != null)
-                .filter(g -> seen.add(g.getIgdbId()))
-                .filter(g -> !g.getIgdbId().equals(excludeId))
+                .filter(g -> !g.getIgdbId().equals(igdbId))
                 .filter(g -> !ownedGameIds.contains(g.getIgdbId()))
                 .filter(g -> matchesAnyPlatform(g, userPlatforms))
-                .toList();
-
-        List<GameDTO> scored = filtered.stream()
-                .sorted(Comparator.comparingDouble(g -> -SimilarityScorer.score(g, genreProfile)))
-                .toList();
-
-        List<GameDTO> pool = new ArrayList<>(scored.subList(0, Math.min(20, scored.size())));
-        Collections.shuffle(pool);
-
-        return pool.subList(0, Math.min(limit, pool.size())).stream()
+                .limit(limit)
                 .map(g -> toDTO(g, reason))
                 .toList();
+    }
+
+    private String currentUserId() {
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth instanceof JwtAuthenticationToken) {
+            return JwtUtils.getUserId(auth);
+        }
+        return null;
     }
 
     private Set<Integer> getOwnedGameIds(String bearerToken) {
