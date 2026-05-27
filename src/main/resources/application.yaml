@@ -12,6 +12,32 @@ spring:
     name: recommendation-service
   codec:
     max-in-memory-size: 2MB
+  datasource:
+    # IPv4 loopback default mirrors library-service: Windows + Docker Desktop quirk where
+    # ::1 binds but refuses connections. Real deployments set REC_DB_URL explicitly.
+    url: ${REC_DB_URL:jdbc:postgresql://127.0.0.1:5434/recommendation_db}
+    username: ${REC_DB_USERNAME:postgres}
+    password: ${REC_DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: ${DDL_AUTO:validate}
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    clean-disabled: true
+    locations: classpath:db/migration
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 2s
   security:
     oauth2:
       resourceserver:
@@ -25,6 +51,22 @@ services:
     read-timeout: ${GAME_SERVICE_READ_TIMEOUT:8000}
   library-service:
     url: ${LIBRARY_SERVICE_URL:http://localhost:8082}
+
+security:
+  internal:
+    token: ${INTERNAL_SERVICE_TOKEN:}
+
+recommendation:
+  # Per-user candidate pool size. Worker writes this many rows, request path serves from them.
+  # Refill triggers when recently-shown intersect >= refill-threshold-percent of pool.
+  pool:
+    size: ${RECOMMENDATION_POOL_SIZE:2500}
+    refill-threshold-percent: ${RECOMMENDATION_REFILL_THRESHOLD_PERCENT:50}
+  # Pool rows older than this trigger an async re-enqueue while still serving current data.
+  stale-ttl-hours: ${RECOMMENDATION_STALE_TTL_HOURS:24}
+  # Redis TTL for the userLibrary + userPlatforms caches consumed by wildcard.
+  cache:
+    user-state-ttl-seconds: ${RECOMMENDATION_USER_STATE_TTL_SECONDS:300}
 
 logging:
   pattern:

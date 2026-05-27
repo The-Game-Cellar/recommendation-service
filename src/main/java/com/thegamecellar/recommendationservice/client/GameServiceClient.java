@@ -75,64 +75,19 @@ public class GameServiceClient {
         }
     }
 
-    public List<GameDTO> searchByGenre(String genre, String platform, int page, String bearerToken) {
-        return searchByGenre(genre, platform, page, bearerToken, false);
-    }
-
-    public List<GameDTO> searchByGenre(String genre, String platform, int page, String bearerToken, boolean dbOnly) {
+    // Pre-computed similar games. game-service serves top-N from game_similarities.
+    public List<GameDTO> getSimilarGames(Integer igdbId, int limit, String bearerToken) {
         try {
-            UriComponentsBuilder builder = UriComponentsBuilder
-                    .fromUriString(gameServiceUrl + "/api/v1/games/search")
-                    .queryParam("pageSize", 100)
-                    .queryParam("page", page)
-                    .queryParam("dbOnly", dbOnly);
-            if (genre != null && !genre.isBlank()) {
-                builder.queryParam("genre", genre);
-            }
-            if (platform != null && !platform.isBlank()) {
-                builder.queryParam("platform", platform);
-            }
-            ResponseEntity<GameSearchDTO> response = restTemplate.exchange(
-                    builder.build().encode().toUri(),
-                    HttpMethod.GET,
-                    buildRequest(bearerToken),
-                    GameSearchDTO.class
-            );
-            GameSearchDTO body = response.getBody();
-            if (body == null || body.getGames() == null) return Collections.emptyList();
-            return body.getGames();
-        } catch (RestClientException ex) {
-            String statusHint = (ex instanceof HttpClientErrorException hce) ? " " + hce.getStatusCode() : "";
-            log.warn("Failed to search games by genre '{}' from Game Service: {}{}", genre, ex.getClass().getSimpleName(), statusHint);
-            return Collections.emptyList();
-        }
-    }
-
-    public List<GameDTO> randomQualityByGenre(String genre, java.math.BigDecimal minRating, int minVotes, int limit, String bearerToken) {
-        try {
-            // Pass URI (not String): the String overload double-encodes pre-encoded "%28" to "%2528",
-            // breaking SQL match for genres like "Role-playing (RPG)".
             java.net.URI uri = UriComponentsBuilder
-                    .fromUriString(gameServiceUrl + "/api/v1/games/random-quality")
-                    .queryParam("genre", genre)
-                    .queryParam("minRating", minRating.toPlainString())
-                    .queryParam("minVotes", minVotes)
+                    .fromUriString(gameServiceUrl + "/api/v1/games/" + igdbId + "/similar")
                     .queryParam("limit", limit)
-                    .build()
-                    .encode()
-                    .toUri();
-            ResponseEntity<GameSearchDTO> response = restTemplate.exchange(
-                    uri,
-                    HttpMethod.GET,
-                    buildRequest(bearerToken),
-                    GameSearchDTO.class
-            );
-            GameSearchDTO body = response.getBody();
-            if (body == null || body.getGames() == null) return Collections.emptyList();
-            return body.getGames();
+                    .build().encode().toUri();
+            ResponseEntity<GameDTO[]> response = restTemplate.exchange(
+                    uri, HttpMethod.GET, buildRequest(bearerToken), GameDTO[].class);
+            if (response.getBody() == null) return Collections.emptyList();
+            return java.util.Arrays.asList(response.getBody());
         } catch (RestClientException ex) {
-            String statusHint = (ex instanceof HttpClientErrorException hce) ? " " + hce.getStatusCode() : "";
-            log.warn("Failed quality random fetch for genre '{}' from Game Service: {}{}", genre, ex.getClass().getSimpleName(), statusHint);
+            log.warn("Failed to fetch similar games for {}: {}", igdbId, ex.getClass().getSimpleName());
             return Collections.emptyList();
         }
     }

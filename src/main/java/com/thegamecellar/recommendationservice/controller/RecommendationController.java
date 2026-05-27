@@ -2,8 +2,11 @@ package com.thegamecellar.recommendationservice.controller;
 
 import com.thegamecellar.recommendationservice.model.dto.DashboardDTO;
 import com.thegamecellar.recommendationservice.model.dto.DashboardRequest;
+import com.thegamecellar.recommendationservice.model.dto.BecauseYouLikedDTO;
+import com.thegamecellar.recommendationservice.model.dto.GenreRowRequest;
 import com.thegamecellar.recommendationservice.model.dto.GroupedRecommendationsResponse;
 import com.thegamecellar.recommendationservice.model.dto.GroupedRequest;
+import com.thegamecellar.recommendationservice.model.dto.RecommendationRow;
 import com.thegamecellar.recommendationservice.model.dto.PersonalizedRequest;
 import com.thegamecellar.recommendationservice.model.dto.RecommendationDTO;
 import com.thegamecellar.recommendationservice.service.DashboardService;
@@ -46,20 +49,37 @@ public class RecommendationController {
     public ResponseEntity<List<RecommendationDTO>> getPersonalized(
             Authentication authentication,
             @Valid @RequestBody PersonalizedRequest request) {
+        String userId = JwtUtils.getUserId(authentication);
         String token = JwtUtils.getBearerToken(authentication);
         Set<Integer> recent = request.getRecentlyShownIds() == null ? null : new HashSet<>(request.getRecentlyShownIds());
-        return ResponseEntity.ok(recommendationService.getPersonalized(token, request.getLimit(), recent));
+        return ResponseEntity.ok(recommendationService.getPersonalized(userId, token, request.getLimit(), recent));
     }
 
     @PostMapping("/personalized/grouped")
     public ResponseEntity<GroupedRecommendationsResponse> getPersonalizedGrouped(
             Authentication authentication,
             @Valid @RequestBody(required = false) GroupedRequest request) {
+        String userId = JwtUtils.getUserId(authentication);
         String token = JwtUtils.getBearerToken(authentication);
         Set<Integer> recent = (request == null || request.getRecentlyShownIds() == null)
                 ? null
                 : new HashSet<>(request.getRecentlyShownIds());
-        return ResponseEntity.ok(recommendationService.getPersonalizedGrouped(token, recent));
+        return ResponseEntity.ok(recommendationService.getPersonalizedGrouped(userId, token, recent));
+    }
+
+    // Per-row refresh button on /recommendations. Returns one bucket (15 games) + enqueues a
+    // per-genre top-up so the next click serves strictly fresh ids.
+    @PostMapping("/personalized/grouped/genre")
+    public ResponseEntity<RecommendationRow> refreshGenreRow(
+            Authentication authentication,
+            @Valid @RequestBody GenreRowRequest request) {
+        String userId = JwtUtils.getUserId(authentication);
+        Set<Integer> recent = request.getRecentlyShownIds() == null
+                ? null
+                : new HashSet<>(request.getRecentlyShownIds());
+        RecommendationRow row = recommendationService.getGenreRow(userId, request.getGenre(), recent);
+        if (row == null) return ResponseEntity.noContent().build();
+        return ResponseEntity.ok(row);
     }
 
     @GetMapping("/wildcard")
@@ -88,15 +108,32 @@ public class RecommendationController {
         return ResponseEntity.ok(similarGameService.getBecauseYouLiked(gameId, token, limit));
     }
 
+    // Refresh button on a "Because you liked X" section rotates the seed to a different rated
+    // >= 7 game. excludeSeedIgdbIds carries all currently-shown seeds (both BYL sections) so
+    // the new pick collides with neither. Returns one fresh section or 204 if no alt eligible.
+    @GetMapping("/dashboard/because-you-liked")
+    public ResponseEntity<BecauseYouLikedDTO> rollBecauseYouLiked(
+            Authentication authentication,
+            @RequestParam(required = false) java.util.List<Integer> excludeSeedIgdbIds) {
+        String token = JwtUtils.getBearerToken(authentication);
+        java.util.Set<Integer> excludes = excludeSeedIgdbIds == null
+                ? java.util.Set.of()
+                : new java.util.HashSet<>(excludeSeedIgdbIds);
+        java.util.List<BecauseYouLikedDTO> rolled = dashboardService.rollBecauseYouLiked(token, excludes, 1);
+        if (rolled.isEmpty()) return ResponseEntity.noContent().build();
+        return ResponseEntity.ok(rolled.get(0));
+    }
+
     // POST for same reason as /personalized; body optional for cold-start callers.
     @PostMapping("/dashboard")
     public ResponseEntity<DashboardDTO> getDashboard(
             Authentication authentication,
             @Valid @RequestBody(required = false) DashboardRequest request) {
+        String userId = JwtUtils.getUserId(authentication);
         String token = JwtUtils.getBearerToken(authentication);
         Set<Integer> recent = (request == null || request.getRecentlyShownIds() == null)
                 ? null
                 : new HashSet<>(request.getRecentlyShownIds());
-        return ResponseEntity.ok(dashboardService.getDashboard(token, recent));
+        return ResponseEntity.ok(dashboardService.getDashboard(userId, token, recent));
     }
 }

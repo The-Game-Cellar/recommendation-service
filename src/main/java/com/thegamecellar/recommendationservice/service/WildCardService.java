@@ -1,45 +1,63 @@
 package com.thegamecellar.recommendationservice.service;
 
 import com.thegamecellar.recommendationservice.client.GameServiceClient;
-import com.thegamecellar.recommendationservice.client.LibraryServiceClient;
 import com.thegamecellar.recommendationservice.model.dto.RecommendationDTO;
 import com.thegamecellar.recommendationservice.model.dto.game.GameDTO;
-import com.thegamecellar.recommendationservice.model.dto.library.UserGameDTO;
+import com.thegamecellar.recommendationservice.util.JwtUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Service;
 
-import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
-import java.util.stream.Collectors;
 
+// Random pick path owned by rec-service. Game-service stays user-agnostic: rec-service
+// pulls owned-igdb-ids + platform names from UserStateCache (Redis, 5min TTL) and applies
+// the filter in-memory against game-service's existing /random catalog endpoint.
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class WildCardService {
 
     private final GameServiceClient gameServiceClient;
-    private final LibraryServiceClient libraryServiceClient;
+    private final UserStateCache userStateCache;
 
     public List<RecommendationDTO> getWildCard(String bearerToken, int limit) {
-        Set<Integer> ownedGameIds = libraryServiceClient.getGames(bearerToken).stream()
-                .filter(g -> g.getIgdbGameId() != null)
-                .map(UserGameDTO::getIgdbGameId)
-                .collect(Collectors.toSet());
+        String userId = currentUserId();
+        Set<Integer> owned = (userId == null) ? Set.of() : userStateCache.getLibraryIgdbIds(userId, bearerToken);
+        Set<String> platforms = (userId == null) ? Set.of() : userStateCache.getPlatformNames(userId, bearerToken);
 
-        List<GameDTO> candidates = gameServiceClient.getRandomFromCache(limit * 3, bearerToken);
+        // Oversample: catalog /random ignores user state, so over-fetch to leave room for the
+        // owned + platform filter to drop matches without falling under the requested limit.
+        int oversample = Math.max(limit * 5, 50);
+        List<GameDTO> candidates = gameServiceClient.getRandomFromCache(oversample, bearerToken);
 
-        Set<Integer> seen = new HashSet<>();
-        List<RecommendationDTO> results = candidates.stream()
-                .filter(g -> g != null && g.getIgdbId() != null)
-                .filter(g -> seen.add(g.getIgdbId()))
-                .filter(g -> !ownedGameIds.contains(g.getIgdbId()))
+        return candidates.stream()
+                .filter(Objects::nonNull)
+                .filter(g -> g.getIgdbId() != null)
+                .filter(g -> !owned.contains(g.getIgdbId()))
+                .filter(g -> matchesAnyPlatform(g, platforms))
                 .limit(limit)
                 .map(this::toDTO)
-                .collect(Collectors.toList());
+                .toList();
+    }
 
-        return results;
+    private static boolean matchesAnyPlatform(GameDTO game, Set<String> userPlatforms) {
+        if (userPlatforms.isEmpty()) return true;
+        if (game.getPlatforms() == null) return false;
+        return game.getPlatforms().stream().anyMatch(userPlatforms::contains);
+    }
+
+    private String currentUserId() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth instanceof JwtAuthenticationToken) {
+            return JwtUtils.getUserId(auth);
+        }
+        return null;
     }
 
     private RecommendationDTO toDTO(GameDTO game) {
