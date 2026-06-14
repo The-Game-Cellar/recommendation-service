@@ -13,6 +13,7 @@ import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.listener.PatternTopic;
 import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 import java.nio.charset.StandardCharsets;
+import java.util.regex.Pattern;
 
 // Listens on the Redis "library-write" channel. Each message is the changed user_id (raw
 // string, no envelope). We translate to a compute_queue full-replace upsert so the worker
@@ -25,6 +26,11 @@ import java.nio.charset.StandardCharsets;
 public class LibraryWriteSubscriber {
 
     public static final String CHANNEL = "library-write";
+
+    // Keycloak `sub` claim is always a standard UUID. Anything else on the channel is either a
+    // bug in the publisher or a payload from an attacker who got hold of REDIS_PASSWORD.
+    private static final Pattern USER_ID_PATTERN =
+            Pattern.compile("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
 
     private final ComputeEnqueuer computeEnqueuer;
     private final UserProfileCache profileCache;
@@ -50,6 +56,10 @@ public class LibraryWriteSubscriber {
         MessageListener listener = (Message message, byte[] pattern) -> {
             String userId = new String(message.getBody(), StandardCharsets.UTF_8).trim();
             if (userId.isEmpty()) return;
+            if (!isValidUserId(userId)) {
+                log.warn("library-write event dropped: payload does not match UUID pattern (length={})", userId.length());
+                return;
+            }
             log.debug("library-write event for {}", userId);
             try {
                 computeEnqueuer.enqueue(userId);
@@ -61,5 +71,9 @@ public class LibraryWriteSubscriber {
         };
         container.addMessageListener(listener, new PatternTopic(CHANNEL));
         return container;
+    }
+
+    static boolean isValidUserId(String candidate) {
+        return candidate != null && USER_ID_PATTERN.matcher(candidate).matches();
     }
 }
