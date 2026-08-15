@@ -2,6 +2,7 @@
 
 > Content-based recommender. Builds a multi-dimensional user profile (genres + tags + release years) from rating evidence blended with declared preferences, scores catalog candidates, and returns ranked results across three tiers. P2 (in progress) moves scoring from request-path to a background worker backed by `recommendation_db`.
 
+[![CI](https://github.com/The-Game-Cellar/recommendation-service/actions/workflows/ci.yml/badge.svg)](https://github.com/The-Game-Cellar/recommendation-service/actions/workflows/ci.yml)
 ![Java](https://img.shields.io/badge/Java-17-orange)
 ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.0-brightgreen)
 ![License](https://img.shields.io/badge/License-MIT-blue)
