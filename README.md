@@ -37,6 +37,7 @@ Real-time scoring path (current production behavior on `/personalized`, `/wildca
 - `RestTemplate` for inter-service calls (forwards the user's JWT in the request path, X-Internal-Token in the worker path)
 - Pure-function algorithm classes (`UserProfileBuilder`, `SimilarityScorer`, `MMRReRanker`, `TierSelector`)
 - Testcontainers for repository integration tests (`RecDbRepositoryTest`)
+- Sentry for error tracking (`sentry-spring-boot-4` + `sentry-logback`)
 
 ## Algorithm
 
@@ -147,6 +148,9 @@ Read paths:
 | `recommendation.stale-scan.initial-delay-ms` | `300000`                              | StaleScanner initial delay after startup (5 min). |
 | `recommendation.worker.fixed-delay-ms` | `30000`                                     | Per-user worker scheduler delay between batches (ms) |
 | `recommendation.worker.initial-delay-ms` | `30000`                                   | Per-user worker scheduler initial delay after startup (ms) |
+| `SENTRY_DSN`                      | (empty)                                          | Sentry ingest endpoint. Empty makes the SDK a no-op, so local runs and tests send nothing. Set in production only. |
+| `SENTRY_ENVIRONMENT`              | `local`                                          | Environment tag on every Sentry event            |
+| `SENTRY_RELEASE`                  | (empty)                                          | Commit sha, baked into the image at build time so Sentry can group regressions by deploy |
 
 ## Database
 

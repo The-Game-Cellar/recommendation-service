@@ -29,6 +29,7 @@
     <properties>
         <java.version>17</java.version>
         <testcontainers.version>1.21.4</testcontainers.version>
+        <sentry.version>8.53.0</sentry.version>
     </properties>
 
     <dependencyManagement>
@@ -116,6 +117,18 @@
             <groupId>org.springdoc</groupId>
             <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
             <version>3.0.3</version>
+        </dependency>
+        <dependency>
+            <groupId>io.sentry</groupId>
+            <artifactId>sentry-spring-boot-4</artifactId>
+            <version>${sentry.version}</version>
+        </dependency>
+        <!-- SentryAppender is auto-configured only when this is on the classpath, and it is
+             what reads the MDC. Without it requestId never leaves the log line. -->
+        <dependency>
+            <groupId>io.sentry</groupId>
+            <artifactId>sentry-logback</artifactId>
+            <version>${sentry.version}</version>
         </dependency>
     </dependencies>
 
