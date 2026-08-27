@@ -191,7 +191,7 @@ docker compose up recommendation-service
 ./mvnw test
 ```
 
-Algorithm classes (`UserProfileBuilder`, `SimilarityScorer`, `TierSelector`, `MMRReRanker`) are pure functions and tested without mocks. Service-layer tests use mocked clients.
+Algorithm classes (`UserProfileBuilder`, `SimilarityScorer`, `TierSelector`, `MMRReRanker`) are pure functions and tested without mocks. Service-layer tests use mocked clients. Two tests run against a real Postgres 17 started by Testcontainers with the real Flyway schema: `RecDbRepositoryTest` for the tables, JSONB round trips and `SKIP LOCKED` dequeueing, and `RecommendationPipelineIntegrationTest` for the whole compute path, from a queued user through tier selection, candidate fetching and scoring to the pool and profile rows, and then the read path serving from them. Only the HTTP clients are mocked. Both need a Docker daemon and skip themselves where none is reachable.
 
 ## Known Limitations
 
