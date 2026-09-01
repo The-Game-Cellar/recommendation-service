@@ -232,11 +232,20 @@ class RecommendationPipelineIntegrationTest {
         List<UserCandidatePool> pool = poolRepository.findByUserId(VETERAN);
         assertThat(pool).isNotEmpty();
         assertThat(pool).allMatch(row -> row.getTier() == 1);
+        // One genre per fixture game is one shared feature, below the seed threshold, so the
+        // connection is the shared genre alone; the sport rows share nothing with the profile.
+        UserCandidatePool rpgRow = pool.stream().filter(r -> r.getIgdbId() == 7001).findFirst().orElseThrow();
+        assertThat(rpgRow.getSeedIgdbId()).isNull();
+        assertThat(rpgRow.getSharedTags()).containsExactly("Role-playing (RPG)");
+        UserCandidatePool sportRow = pool.stream().filter(r -> r.getIgdbId() == 7003).findFirst().orElseThrow();
+        assertThat(sportRow.getSharedTags()).isEmpty();
 
         List<RecommendationDTO> served = recommendationService.getPersonalized(VETERAN, "unused", 10, Set.of());
         assertThat(served).isNotEmpty();
         assertThat(served).allMatch(dto -> dto.getTier() == 1);
         assertThat(served).extracting(RecommendationDTO::getIgdbId).isSubsetOf(7001, 7002, 7003, 7004);
+        assertThat(served).filteredOn(dto -> dto.getIgdbId() == 7001)
+                .allSatisfy(dto -> assertThat(dto.getSharedTags()).containsExactly("Role-playing (RPG)"));
         // Nothing was re-enqueued: the pool is fresh, so the read was pool-only.
         assertThat(queueRepository.findById(VETERAN)).isEmpty();
     }

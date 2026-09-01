@@ -168,20 +168,28 @@ public class UserComputeProcessor {
             // In append-only mode the existing bucket stayed, so skip ids already present to
             // avoid PK collision on insert.
             if (!replace && existingIds.contains(c.igdbId())) continue;
-            rows.add(UserCandidatePool.builder()
-                    .userId(userId)
-                    .igdbId(c.igdbId())
-                    .baseScore(c.baseScore())
-                    .tier(c.tier())
-                    .name(c.name())
-                    .backgroundImage(c.backgroundImage())
-                    .rating(c.rating())
-                    .genres(c.genres())
-                    .platforms(c.platforms())
-                    .computedAt(now)
-                    .build());
+            rows.add(toRow(userId, c, now));
         }
         if (!rows.isEmpty()) poolRepository.saveAll(rows);
+    }
+
+    private static UserCandidatePool toRow(String userId, RecommendationComputer.PoolCandidate c, LocalDateTime now) {
+        return UserCandidatePool.builder()
+                .userId(userId)
+                .igdbId(c.igdbId())
+                .baseScore(c.baseScore())
+                .tier(c.tier())
+                .name(c.name())
+                .backgroundImage(c.backgroundImage())
+                .rating(c.rating())
+                .genres(c.genres())
+                .platforms(c.platforms())
+                .seedIgdbId(c.seedIgdbId())
+                .seedName(c.seedName())
+                .seedRating(c.seedRating() == null ? null : c.seedRating().shortValue())
+                .sharedTags(c.sharedTags() == null ? List.of() : c.sharedTags())
+                .computedAt(now)
+                .build();
     }
 
     record ComputeOutput(RecommendationComputer.Result result, Map<String, Double> libraryGenreCounts) {}
@@ -225,18 +233,7 @@ public class UserComputeProcessor {
 
         List<UserCandidatePool> rows = new ArrayList<>(result.candidates().size());
         for (RecommendationComputer.PoolCandidate c : result.candidates()) {
-            rows.add(UserCandidatePool.builder()
-                    .userId(userId)
-                    .igdbId(c.igdbId())
-                    .baseScore(c.baseScore())
-                    .tier(c.tier())
-                    .name(c.name())
-                    .backgroundImage(c.backgroundImage())
-                    .rating(c.rating())
-                    .genres(c.genres())
-                    .platforms(c.platforms())
-                    .computedAt(now)
-                    .build());
+            rows.add(toRow(userId, c, now));
         }
         poolRepository.saveAll(rows);
 

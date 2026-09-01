@@ -101,9 +101,7 @@ public class RecommendationService {
                 && diversified.get(0).row.getPlatforms() != null
                 && !diversified.get(0).row.getPlatforms().isEmpty();
         return diversified.stream()
-                .map(s -> toDTO(toGameDTO(s.row),
-                        tierReason(s.row.getTier(), hasPlatforms),
-                        s.row.getTier()))
+                .map(s -> toDTO(s.row, tierReason(s.row.getTier(), hasPlatforms), s.row.getTier()))
                 .toList();
     }
 
@@ -296,8 +294,7 @@ public class RecommendationService {
             Integer id = s.row.getIgdbId();
             if (seenAcrossRows.contains(id)) continue;
             seenAcrossRows.add(id);
-            rowGames.add(toDTO(toGameDTO(s.row), "From your " + genre + " ratings",
-                    tierById.getOrDefault(id, 1)));
+            rowGames.add(toDTO(s.row, "From your " + genre + " ratings", tierById.getOrDefault(id, 1)));
         }
         if (rowGames.isEmpty()) return null;
         return RecommendationRow.builder()
@@ -378,18 +375,22 @@ public class RecommendationService {
         return out;
     }
 
-    private GameDTO toGameDTO(UserCandidatePool row) {
-        GameDTO dto = new GameDTO();
-        dto.setIgdbId(row.getIgdbId());
-        dto.setName(row.getName());
-        dto.setRating(row.getRating());
-        dto.setTotalRating(row.getRating());
-        dto.setBackgroundImage(row.getBackgroundImage());
-        dto.setGenres(row.getGenres() == null ? Collections.emptyList() : row.getGenres());
-        dto.setPlatforms(row.getPlatforms() == null ? Collections.emptyList() : row.getPlatforms());
-        dto.setThemes(Collections.emptyList());
-        dto.setTags(Collections.emptyList());
-        return dto;
+    // Pool rows carry the connection the worker found; the live tier-3 fallback has none.
+    private RecommendationDTO toDTO(UserCandidatePool row, String reason, int tier) {
+        return RecommendationDTO.builder()
+                .igdbId(row.getIgdbId())
+                .name(row.getName())
+                .rating(row.getRating())
+                .backgroundImage(row.getBackgroundImage())
+                .genres(row.getGenres() == null ? Collections.emptyList() : row.getGenres())
+                .platforms(row.getPlatforms() == null ? Collections.emptyList() : row.getPlatforms())
+                .reason(reason)
+                .tier(tier)
+                .seedIgdbId(row.getSeedIgdbId())
+                .seedName(row.getSeedName())
+                .seedRating(row.getSeedRating() == null ? null : row.getSeedRating().intValue())
+                .sharedTags(row.getSharedTags() == null ? List.of() : row.getSharedTags())
+                .build();
     }
 
     private static String primaryGenre(List<String> genres) {

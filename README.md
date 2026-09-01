@@ -92,6 +92,10 @@ Ignores the user profile entirely. Filters: user platforms + exclude owned. Shuf
 
 Selects one seed game from rated >= 8 (shuffled so the seed rotates). Scores candidates by genre overlap with that seed, filters by platform + owned, returns with the label "Because you liked {gameName}".
 
+### The connection behind a card
+
+Every pool row records why it is there, decided at compute time and aging with the pool. `seedIgdbId` / `seedName` / `seedRating` name the user's rated game with the largest feature overlap, where a seed needs a rating of 7 or higher and at least two shared genres, themes or tags. `sharedTags` holds up to three shared features ranked by profile weight (each dimension scaled by its own maximum, so a genre and a tag compare on one scale). Without a qualifying seed, `sharedTags` falls back to the candidate's features the profile weighs at all; a tier-3 row carries neither. Keywords in `ReasonTagBlocklist` never appear: words that say nothing about what kind of game it is or read badly in a sentence (`3d`, `colorful`, `short`, `difficult`, ...). Sub-genre words such as `roguelike`, `metroidvania` and `survival horror` pass, since they are the most telling reasons. This list is separate from game-service's chip-wall blocklist (`JUNK_TAG_BLOCKLIST`), which blocks those very words for the preference picker; the two serve different surfaces, are maintained by hand and will drift until tag curation moves into a shared table. `/similar` and `/because-you-liked` set the anchor game as the seed and the features shared with it; the dashboard fills in `seedRating` for its because-you-liked sections. Clients compose the sentence down a ladder: seed plus tags ("Because you rated Hades 9 · Adventure, Indie"), tags alone ("Matches your taste for ..."), then `reason`. Nothing is claimed that the data does not carry.
+
 ## API Endpoints
 
 All endpoints require JWT. `userId` is extracted from `@AuthenticationPrincipal Jwt jwt`.
@@ -156,7 +160,7 @@ Read paths:
 
 Schema lives under `src/main/resources/db/migration/` and is managed by Flyway. Current schema (V1 + V2 + V3 + V4):
 
-- `user_candidate_pool(user_id, igdb_id, base_score, tier, name, background_image, rating, genres, platforms, computed_at)` with PK on `(user_id, igdb_id)` and indexes on `(user_id, base_score DESC)` + `(computed_at)`. Denormalized so the request path can build response DTOs without a game-service hop. Genres + platforms are JSONB string arrays.
+- `user_candidate_pool(user_id, igdb_id, base_score, tier, name, background_image, rating, genres, platforms, seed_igdb_id, seed_name, seed_rating, shared_tags, computed_at)` with PK on `(user_id, igdb_id)` and indexes on `(user_id, base_score DESC)` + `(computed_at)`. Denormalized so the request path can build response DTOs without a game-service hop. Genres, platforms and shared_tags are JSONB string arrays; the three seed columns are nullable and hold the connection behind the row.
 - `user_profiles(user_id, genre_weights, tag_weights, platform_weights, decade_weights, library_genre_counts, rated_count, updated_at)`. JSONB weight columns. `library_genre_counts` (V3) is the raw genre count over the full library, drives the /recommendations row order matching `/profile/statistics`.
 - `pool_holding(user_id, genre, igdb_id, released_at)` (V4). Parks recently-evicted bucket ids during a per-genre top-up so the next fetch excludes them. Worker prunes expired rows at each tick.
 - `compute_queue(user_id, queued_at, attempts, target_genre)`. `target_genre` (V4) is NULL for full-replace jobs, set for per-genre top-up jobs.

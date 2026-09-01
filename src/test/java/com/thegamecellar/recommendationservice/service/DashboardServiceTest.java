@@ -93,6 +93,8 @@ class DashboardServiceTest {
         BecauseYouLikedDTO section = result.getBecauseYouLiked().get(0);
         assertThat(section.getBasedOnGame()).isEqualTo("The Witcher 3");
         assertThat(section.getRecommendations()).hasSize(1);
+        // The catalog path does not know the user's rating of the seed; the dashboard fills it in.
+        assertThat(section.getRecommendations().get(0).getSeedRating()).isEqualTo(9);
     }
 
     @Test
