@@ -1,5 +1,6 @@
 package com.thegamecellar.recommendationservice.service;
 
+import com.thegamecellar.recommendationservice.algorithm.ConnectionFinder;
 import com.thegamecellar.recommendationservice.algorithm.RecommendationTier;
 import com.thegamecellar.recommendationservice.algorithm.SimilarityScorer;
 import com.thegamecellar.recommendationservice.algorithm.TierSelector;
@@ -56,7 +57,11 @@ public class RecommendationComputer {
             String backgroundImage,
             BigDecimal rating,
             List<String> genres,
-            List<String> platforms
+            List<String> platforms,
+            Integer seedIgdbId,
+            String seedName,
+            Integer seedRating,
+            List<String> sharedTags
     ) {}
 
     public record Result(UserProfile profile, List<PoolCandidate> candidates, RecommendationTier tier) {}
@@ -106,7 +111,7 @@ public class RecommendationComputer {
 
         List<GameDTO> filtered = dedupeAndFilter(raw, ownedGameIds, userPlatforms);
         if (filtered.isEmpty()) return List.of();
-        return scoreAndCap(filtered, profile, (short) 1, topUpSize);
+        return scoreAndCap(filtered, profile, (short) 1, topUpSize, new ConnectionFinder(ratedGames, profile));
     }
 
     public Result computePool(List<UserGameDTO> allGames,
@@ -133,10 +138,11 @@ public class RecommendationComputer {
                 ratedGames, platformList, genrePrefs, tagPrefs, yearPrefs);
 
         RecommendationTier tier = TierSelector.select(ratedGames.size());
+        ConnectionFinder finder = new ConnectionFinder(ratedGames, profile);
 
         List<PoolCandidate> candidates = switch (tier) {
-            case ONE -> tier1(ratedGames, ownedGameIds, userPlatforms, profile, gameClient, poolSize);
-            case TWO -> tier2(ratedGames, ownedGameIds, userPlatforms, profile, gameClient, poolSize);
+            case ONE -> tier1(ratedGames, ownedGameIds, userPlatforms, profile, gameClient, poolSize, finder);
+            case TWO -> tier2(ratedGames, ownedGameIds, userPlatforms, profile, gameClient, poolSize, finder);
             case THREE -> tier3(ownedGameIds, userPlatforms, gameClient, poolSize);
         };
 
@@ -148,7 +154,8 @@ public class RecommendationComputer {
                                       Set<String> userPlatforms,
                                       UserProfile profile,
                                       InternalGameClient gameClient,
-                                      int poolSize) {
+                                      int poolSize,
+                                      ConnectionFinder finder) {
         List<String> genresToSearch = UserProfileBuilder.sampleWeighted(profile.genres(), TIER1_GENRES_TO_SAMPLE);
 
         List<GameDTO> raw = fetchGenreCandidatesMultiPass(gameClient, genresToSearch);
@@ -161,7 +168,7 @@ public class RecommendationComputer {
             log.warn("Tier 1 produced no candidates, falling back to Tier 3");
             return tier3(ownedGameIds, userPlatforms, gameClient, poolSize);
         }
-        return scoreAndCap(filtered, profile, (short) 1, poolSize);
+        return scoreAndCap(filtered, profile, (short) 1, poolSize, finder);
     }
 
     private List<PoolCandidate> tier2(List<UserGameDTO> ratedGames,
@@ -169,7 +176,8 @@ public class RecommendationComputer {
                                       Set<String> userPlatforms,
                                       UserProfile profile,
                                       InternalGameClient gameClient,
-                                      int poolSize) {
+                                      int poolSize,
+                                      ConnectionFinder finder) {
         List<String> genresToSearch = UserProfileBuilder.sampleWeighted(profile.genres(), TIER2_GENRES_TO_SAMPLE);
 
         List<GameDTO> raw = fetchGenreCandidatesMultiPass(gameClient, genresToSearch);
@@ -182,7 +190,7 @@ public class RecommendationComputer {
             log.warn("Tier 2 produced no candidates, falling back to Tier 3");
             return tier3(ownedGameIds, userPlatforms, gameClient, poolSize);
         }
-        return scoreAndCap(filtered, profile, (short) 2, poolSize);
+        return scoreAndCap(filtered, profile, (short) 2, poolSize, finder);
     }
 
     private List<PoolCandidate> tier3(Set<Integer> ownedGameIds,
@@ -211,7 +219,8 @@ public class RecommendationComputer {
         for (GameDTO g : filtered) {
             if (out.size() >= poolSize) break;
             double score = 1.0 - ((double) idx / Math.max(1, filtered.size()));
-            out.add(toPoolCandidate(g, clamp(score), (short) 3));
+            // Popularity has no profile behind it, so a tier-3 row carries no connection.
+            out.add(toPoolCandidate(g, clamp(score), (short) 3, ConnectionFinder.Connection.NONE));
             idx++;
         }
         return out;
@@ -247,7 +256,8 @@ public class RecommendationComputer {
                 .toList();
     }
 
-    private List<PoolCandidate> scoreAndCap(List<GameDTO> filtered, UserProfile profile, short tier, int poolSize) {
+    private List<PoolCandidate> scoreAndCap(List<GameDTO> filtered, UserProfile profile, short tier, int poolSize,
+                                            ConnectionFinder finder) {
         record Scored(GameDTO game, double score) {}
         List<Scored> scored = new ArrayList<>(filtered.size());
         for (GameDTO g : filtered) {
@@ -258,15 +268,16 @@ public class RecommendationComputer {
         }
         scored.sort(Comparator.comparingDouble((Scored s) -> s.score).reversed());
 
+        // The connection is found after the cap, for the rows that will be written only.
         List<PoolCandidate> out = new ArrayList<>(Math.min(scored.size(), poolSize));
         for (Scored s : scored) {
             if (out.size() >= poolSize) break;
-            out.add(toPoolCandidate(s.game, clamp(s.score), tier));
+            out.add(toPoolCandidate(s.game, clamp(s.score), tier, finder.find(s.game)));
         }
         return out;
     }
 
-    private PoolCandidate toPoolCandidate(GameDTO g, BigDecimal score, short tier) {
+    private PoolCandidate toPoolCandidate(GameDTO g, BigDecimal score, short tier, ConnectionFinder.Connection c) {
         List<String> genres = g.getGenres() == null ? List.of() : List.copyOf(g.getGenres());
         List<String> platforms = g.getPlatforms() == null ? List.of() : List.copyOf(g.getPlatforms());
         BigDecimal rating = g.getTotalRating() != null ? g.getTotalRating() : g.getRating();
@@ -279,7 +290,11 @@ public class RecommendationComputer {
                 g.getBackgroundImage(),
                 rating,
                 genres,
-                platforms
+                platforms,
+                c.seedIgdbId(),
+                c.seedName(),
+                c.seedRating(),
+                c.sharedTags()
         );
     }
 

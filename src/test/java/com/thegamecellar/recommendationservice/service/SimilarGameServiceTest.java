@@ -123,6 +123,10 @@ class SimilarGameServiceTest {
         List<RecommendationDTO> result = similarGameService.getBecauseYouLiked(1, "token", 10);
 
         assertThat(result.get(0).getReason()).isEqualTo("Because you liked The Witcher 3");
+        assertThat(result.get(0).getSeedIgdbId()).isEqualTo(1);
+        assertThat(result.get(0).getSeedName()).isEqualTo("The Witcher 3");
+        assertThat(result.get(0).getSeedRating()).isNull();
+        assertThat(result.get(0).getSharedTags()).containsExactly("RPG");
     }
 
     @Test

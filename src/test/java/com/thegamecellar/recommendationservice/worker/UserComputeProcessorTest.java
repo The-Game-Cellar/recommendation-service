@@ -83,7 +83,8 @@ class UserComputeProcessorTest {
                 new HashMap<>(), new HashMap<>(), Set.of(), 3);
         RecommendationComputer.PoolCandidate candidate = new RecommendationComputer.PoolCandidate(
                 100, new BigDecimal("0.8500"), (short) 1, "Test", null,
-                BigDecimal.valueOf(8.0), List.of("Action"), List.of("PC"));
+                BigDecimal.valueOf(8.0), List.of("Action"), List.of("PC"),
+                7, "Seed Game", 9, List.of("Action", "Fantasy"));
         RecommendationComputer.Result result = new RecommendationComputer.Result(
                 profile, List.of(candidate),
                 com.thegamecellar.recommendationservice.algorithm.RecommendationTier.ONE);
@@ -99,6 +100,10 @@ class UserComputeProcessorTest {
         assertThat(rows.getValue()).hasSize(1);
         assertThat(rows.getValue().get(0).getIgdbId()).isEqualTo(100);
         assertThat(rows.getValue().get(0).getName()).isEqualTo("Test");
+        assertThat(rows.getValue().get(0).getSeedIgdbId()).isEqualTo(7);
+        assertThat(rows.getValue().get(0).getSeedName()).isEqualTo("Seed Game");
+        assertThat(rows.getValue().get(0).getSeedRating()).isEqualTo((short) 9);
+        assertThat(rows.getValue().get(0).getSharedTags()).containsExactly("Action", "Fantasy");
 
         ArgumentCaptor<UserProfileSnapshot> snap = ArgumentCaptor.forClass(UserProfileSnapshot.class);
         verify(profileRepository).save(snap.capture());
@@ -182,7 +187,8 @@ class UserComputeProcessorTest {
         for (int i = 0; i < 20; i++) {
             freshBatch.add(new RecommendationComputer.PoolCandidate(
                     100 + i, new BigDecimal("0.8500"), (short) 1, "New" + i, null,
-                    BigDecimal.valueOf(8.0), List.of("Action"), List.of("PC")));
+                    BigDecimal.valueOf(8.0), List.of("Action"), List.of("PC"),
+                    null, null, null, List.of()));
         }
         when(computer.topUpGenre(eq("Action"), any(), any(), any(), any(), any(), any(), any(), anyInt()))
                 .thenReturn(freshBatch);

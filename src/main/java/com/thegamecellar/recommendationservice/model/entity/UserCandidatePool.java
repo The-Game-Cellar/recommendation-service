@@ -65,6 +65,22 @@ public class UserCandidatePool {
     @Builder.Default
     private List<String> platforms = new ArrayList<>();
 
+    // The connection behind the row, decided at compute time: the rated game it overlaps most
+    // (null when none qualified) and the shared features that carry the most profile weight.
+    @Column(name = "seed_igdb_id")
+    private Integer seedIgdbId;
+
+    @Column(name = "seed_name", columnDefinition = "TEXT")
+    private String seedName;
+
+    @Column(name = "seed_rating")
+    private Short seedRating;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "shared_tags", nullable = false, columnDefinition = "jsonb")
+    @Builder.Default
+    private List<String> sharedTags = new ArrayList<>();
+
     @Column(name = "computed_at", nullable = false)
     private LocalDateTime computedAt;
 }

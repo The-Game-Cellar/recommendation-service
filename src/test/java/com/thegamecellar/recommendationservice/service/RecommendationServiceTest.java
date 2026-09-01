@@ -136,6 +136,28 @@ class RecommendationServiceTest {
     }
 
     @Test
+    void warmPool_dtoCarriesTheRowsConnection() {
+        List<UserCandidatePool> pool = poolOfSize(5, "u1");
+        pool.get(0).setSeedIgdbId(77);
+        pool.get(0).setSeedName("Hades");
+        pool.get(0).setSeedRating((short) 9);
+        pool.get(0).setSharedTags(List.of("Action", "Indie"));
+        when(poolRepository.findByUserId("u1")).thenReturn(pool);
+
+        List<RecommendationDTO> result = service.getPersonalized("u1", "token", 5, Set.of());
+
+        RecommendationDTO seeded = result.stream().filter(r -> r.getIgdbId() == 0).findFirst().orElseThrow();
+        assertThat(seeded.getSeedIgdbId()).isEqualTo(77);
+        assertThat(seeded.getSeedName()).isEqualTo("Hades");
+        assertThat(seeded.getSeedRating()).isEqualTo(9);
+        assertThat(seeded.getSharedTags()).containsExactly("Action", "Indie");
+        assertThat(seeded.getReason()).isEqualTo("Based on your ratings");
+        RecommendationDTO plain = result.stream().filter(r -> r.getIgdbId() == 1).findFirst().orElseThrow();
+        assertThat(plain.getSeedIgdbId()).isNull();
+        assertThat(plain.getSharedTags()).isEmpty();
+    }
+
+    @Test
     void warmPool_stalePoolEnqueues() {
         List<UserCandidatePool> pool = poolOfSize(20, "u1");
         LocalDateTime ancient = LocalDateTime.now().minusDays(2);

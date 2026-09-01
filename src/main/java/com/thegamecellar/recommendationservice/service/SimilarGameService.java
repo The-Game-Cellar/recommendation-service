@@ -1,5 +1,6 @@
 package com.thegamecellar.recommendationservice.service;
 
+import com.thegamecellar.recommendationservice.algorithm.ConnectionFinder;
 import com.thegamecellar.recommendationservice.client.GameServiceClient;
 import com.thegamecellar.recommendationservice.client.LibraryServiceClient;
 import com.thegamecellar.recommendationservice.model.dto.RecommendationDTO;
@@ -37,7 +38,7 @@ public class SimilarGameService {
         List<GameDTO> picks = gameServiceClient.getSimilarGames(igdbId, limit, bearerToken);
         return picks.stream()
                 .filter(g -> g != null && g.getIgdbId() != null && !g.getIgdbId().equals(igdbId))
-                .map(g -> toDTO(g, reason))
+                .map(g -> toDTO(g, reason, source))
                 .toList();
     }
 
@@ -62,7 +63,7 @@ public class SimilarGameService {
                 .filter(g -> !ownedGameIds.contains(g.getIgdbId()))
                 .filter(g -> matchesAnyPlatform(g, userPlatforms))
                 .limit(limit)
-                .map(g -> toDTO(g, reason))
+                .map(g -> toDTO(g, reason, source))
                 .toList();
     }
 
@@ -92,7 +93,9 @@ public class SimilarGameService {
         return game.getPlatforms().stream().anyMatch(userPlatforms::contains);
     }
 
-    private RecommendationDTO toDTO(GameDTO game, String reason) {
+    // The source game is the seed; the rating stays null here since the catalog does not know
+    // it, and the caller that does (the dashboard's because-you-liked) fills it in.
+    private RecommendationDTO toDTO(GameDTO game, String reason, GameDTO source) {
         return RecommendationDTO.builder()
                 .igdbId(game.getIgdbId())
                 .name(game.getName())
@@ -102,6 +105,9 @@ public class SimilarGameService {
                 .platforms(game.getPlatforms())
                 .reason(reason)
                 .tier(null)
+                .seedIgdbId(source.getIgdbId())
+                .seedName(source.getName())
+                .sharedTags(ConnectionFinder.sharedFeatures(game, source))
                 .build();
     }
 }

@@ -1,5 +1,6 @@
 package com.thegamecellar.recommendationservice.service;
 
+import com.thegamecellar.recommendationservice.algorithm.ConnectionFinder;
 import com.thegamecellar.recommendationservice.client.LibraryServiceClient;
 import com.thegamecellar.recommendationservice.model.dto.BecauseYouLikedDTO;
 import com.thegamecellar.recommendationservice.model.dto.DashboardDTO;
@@ -191,6 +192,10 @@ public class DashboardService {
             List<RecommendationDTO> recos = fastPoolByl(seed, ownedIds, BYL_GAMES_PER_SECTION);
             if (recos.size() < POOL_BYL_MIN_CANDIDATES / 2) {
                 recos = similarGameService.getBecauseYouLiked(seed.getIgdbGameId(), bearerToken, BYL_GAMES_PER_SECTION);
+                // The catalog path knows the seed game but not the user's rating of it.
+                for (RecommendationDTO r : recos) {
+                    if (r.getSeedRating() == null) r.setSeedRating(seed.getRating());
+                }
             }
             return BecauseYouLikedDTO.builder()
                     .basedOnIgdbId(seed.getIgdbGameId())
@@ -246,8 +251,22 @@ public class DashboardService {
                         .platforms(s.row.getPlatforms())
                         .reason("Because you liked " + (seed.getGameName() == null ? "this game" : seed.getGameName()))
                         .tier(null)
+                        .seedIgdbId(seed.getIgdbGameId())
+                        .seedName(seed.getGameName())
+                        .seedRating(seed.getRating())
+                        .sharedTags(sharedWithSeed(s.row, seed))
                         .build())
                 .toList();
+    }
+
+    // The worker's full-feature connection when it named this very seed; otherwise the genres
+    // the row and the seed share, since genres are all a pool row carries.
+    private static List<String> sharedWithSeed(UserCandidatePool row, UserGameDTO seed) {
+        if (row.getSeedIgdbId() != null && row.getSeedIgdbId().equals(seed.getIgdbGameId())
+                && row.getSharedTags() != null && !row.getSharedTags().isEmpty()) {
+            return row.getSharedTags();
+        }
+        return ConnectionFinder.sharedGenres(row.getGenres(), seed.getGenres());
     }
 
     private record Scored(UserCandidatePool row, double score) {}
