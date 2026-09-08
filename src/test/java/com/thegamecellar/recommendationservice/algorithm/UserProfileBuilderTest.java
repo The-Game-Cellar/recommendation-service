@@ -235,6 +235,22 @@ class UserProfileBuilderTest {
     }
 
     @Test
+    void buildMultiDim_credits_every_platform_of_a_game_owned_on_several() {
+        // 9★ on PS5 + PC → weight 4 to both; 6★ on PC alone → weight 1. The list wins over the single field.
+        UserGameDTO onBoth = ratedOnPlatform(1, 9, "PlayStation 5");
+        onBoth.setPlatforms(List.of("PlayStation 5", "PC", " PC "));
+        UserGameDTO pcOnly = ratedOnPlatform(2, 6, "PC");
+
+        UserProfile profile = UserProfileBuilder.buildMultiDim(List.of(onBoth, pcOnly));
+
+        // Raw: PS5 = 4, PC = 4 + 1 = 5 (the repeated PC in one payload counts once).
+        double sumSqrt = Math.sqrt(4) + Math.sqrt(5);
+        assertThat(profile.platforms()).hasSize(2);
+        assertThat(profile.platforms().get("PlayStation 5")).isCloseTo(Math.sqrt(4) / sumSqrt, within(1e-9));
+        assertThat(profile.platforms().get("PC")).isCloseTo(Math.sqrt(5) / sumSqrt, within(1e-9));
+    }
+
+    @Test
     void buildMultiDim_platforms_sum_to_one_after_sqrt_normalisation() {
         // Arbitrary mix. Only invariant is Σ w[p] = 1.0 after normalisation.
         UserGameDTO a = ratedOnPlatform(1, 9, "PlayStation 5");

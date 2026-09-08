@@ -14,7 +14,9 @@ public class UserGameDTO {
     private String gameName;
     private String status;
     private Integer rating;
+    // `platform` is the first of `platforms`; payloads from before the list carry only `platform`
     private String platform;
+    private List<String> platforms;
     private List<String> genres;
     private List<String> themes;
     private List<String> tags;
