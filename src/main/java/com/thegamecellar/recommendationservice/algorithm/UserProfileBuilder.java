@@ -6,6 +6,7 @@ import com.thegamecellar.recommendationservice.model.dto.library.UserPlatformDTO
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -266,13 +267,24 @@ public class UserProfileBuilder {
             if (g.getRating() == null) continue;
             double weight = weightFor(g.getRating());
             if (weight <= 0.0) continue;
-            String platform = g.getPlatform();
-            if (platform == null) continue;
-            String key = platform.trim();
-            if (key.isEmpty()) continue;
-            totals.merge(key, weight, Double::sum);
+            // A game owned on several platforms credits each with the full weight
+            for (String key : platformsOf(g)) {
+                totals.merge(key, weight, Double::sum);
+            }
         }
         return totals;
+    }
+
+    // The list when the payload carries one, else the single field older payloads have
+    private static Set<String> platformsOf(UserGameDTO g) {
+        List<String> source = (g.getPlatforms() != null && !g.getPlatforms().isEmpty())
+                ? g.getPlatforms()
+                : (g.getPlatform() == null ? List.of() : List.of(g.getPlatform()));
+        return source.stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
     // BM25 / Lucene tfNorm-style damping: sqrt-soften then normalise so skewed dists don't crush secondaries to zero.
