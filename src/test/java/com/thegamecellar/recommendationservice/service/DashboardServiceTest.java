@@ -94,7 +94,7 @@ class DashboardServiceTest {
         assertThat(section.getBasedOnGame()).isEqualTo("The Witcher 3");
         assertThat(section.getRecommendations()).hasSize(1);
         // The catalog path does not know the user's rating of the seed; the dashboard fills it in.
-        assertThat(section.getRecommendations().get(0).getSeedRating()).isEqualTo(9);
+        assertThat(section.getRecommendations().get(0).getSeedRating()).isEqualByComparingTo("9");
     }
 
     @Test
@@ -143,7 +143,7 @@ class DashboardServiceTest {
 
         UserGameDTO gameWithNullId = new UserGameDTO();
         gameWithNullId.setIgdbGameId(null);
-        gameWithNullId.setRating(9);
+        gameWithNullId.setRating(BigDecimal.valueOf(9));
         gameWithNullId.setGameName("Broken Game");
 
         when(libraryServiceClient.getGames(TOK)).thenReturn(List.of(gameWithNullId));
@@ -178,14 +178,14 @@ class DashboardServiceTest {
         UserGameDTO game = new UserGameDTO();
         game.setIgdbGameId(rawgId);
         game.setGameName(name);
-        game.setRating(rating);
+        game.setRating(BigDecimal.valueOf(rating));
         return game;
     }
 
     private UserGameDTO lowRatedGame(int rawgId, int rating) {
         UserGameDTO game = new UserGameDTO();
         game.setIgdbGameId(rawgId);
-        game.setRating(rating);
+        game.setRating(BigDecimal.valueOf(rating));
         return game;
     }
 }

@@ -21,7 +21,7 @@ public class RecommendationDTO {
     // then reason. A seed without a rating is a catalog anchor ("Similar to"), not a rated game.
     private Integer seedIgdbId;
     private String seedName;
-    private Integer seedRating;
+    private BigDecimal seedRating;
     @Builder.Default
     private List<String> sharedTags = List.of();
 }

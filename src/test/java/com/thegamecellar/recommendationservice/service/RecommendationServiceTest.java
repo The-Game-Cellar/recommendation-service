@@ -140,7 +140,7 @@ class RecommendationServiceTest {
         List<UserCandidatePool> pool = poolOfSize(5, "u1");
         pool.get(0).setSeedIgdbId(77);
         pool.get(0).setSeedName("Hades");
-        pool.get(0).setSeedRating((short) 9);
+        pool.get(0).setSeedRating(new BigDecimal("9.5"));
         pool.get(0).setSharedTags(List.of("Action", "Indie"));
         when(poolRepository.findByUserId("u1")).thenReturn(pool);
 
@@ -149,7 +149,7 @@ class RecommendationServiceTest {
         RecommendationDTO seeded = result.stream().filter(r -> r.getIgdbId() == 0).findFirst().orElseThrow();
         assertThat(seeded.getSeedIgdbId()).isEqualTo(77);
         assertThat(seeded.getSeedName()).isEqualTo("Hades");
-        assertThat(seeded.getSeedRating()).isEqualTo(9);
+        assertThat(seeded.getSeedRating()).isEqualByComparingTo("9.5");
         assertThat(seeded.getSharedTags()).containsExactly("Action", "Indie");
         assertThat(seeded.getReason()).isEqualTo("Based on your ratings");
         RecommendationDTO plain = result.stream().filter(r -> r.getIgdbId() == 1).findFirst().orElseThrow();

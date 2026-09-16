@@ -16,6 +16,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -161,7 +162,7 @@ public class DashboardService {
         Set<Integer> excludes = excludeSeedIgdbIds == null ? Set.of() : excludeSeedIgdbIds;
         List<UserGameDTO> games = libraryServiceClient.getGames(bearerToken);
         List<UserGameDTO> eligible = games.stream()
-                .filter(g -> g.getRating() != null && g.getRating() >= 7 && g.getIgdbGameId() != null)
+                .filter(g -> g.getRating() != null && g.getRating().compareTo(BigDecimal.valueOf(ConnectionFinder.SEED_MIN_RATING)) >= 0 && g.getIgdbGameId() != null)
                 .filter(g -> isEligibleStatus(g.getStatus()))
                 .filter(g -> !excludes.contains(g.getIgdbGameId()))
                 .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));

@@ -108,7 +108,7 @@ class RecommendationPipelineIntegrationTest {
         g.setIgdbGameId(igdbId);
         g.setGameName("owned-" + igdbId);
         g.setStatus("COMPLETED");
-        g.setRating(rating);
+        g.setRating(BigDecimal.valueOf(rating));
         g.setPlatform("PC");
         g.setGenres(List.of(genre));
         g.setThemes(List.of());

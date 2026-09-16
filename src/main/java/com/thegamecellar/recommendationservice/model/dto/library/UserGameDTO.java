@@ -3,6 +3,7 @@ package com.thegamecellar.recommendationservice.model.dto.library;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -13,7 +14,8 @@ public class UserGameDTO {
     private Integer igdbGameId;
     private String gameName;
     private String status;
-    private Integer rating;
+    // 0.5 to 10 in half steps, as library-service serves it
+    private BigDecimal rating;
     // `platform` is the first of `platforms`; payloads from before the list carry only `platform`
     private String platform;
     private List<String> platforms;

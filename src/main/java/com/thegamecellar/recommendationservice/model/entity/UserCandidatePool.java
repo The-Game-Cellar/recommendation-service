@@ -73,8 +73,8 @@ public class UserCandidatePool {
     @Column(name = "seed_name", columnDefinition = "TEXT")
     private String seedName;
 
-    @Column(name = "seed_rating")
-    private Short seedRating;
+    @Column(name = "seed_rating", precision = 3, scale = 1)
+    private BigDecimal seedRating;
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "shared_tags", nullable = false, columnDefinition = "jsonb")

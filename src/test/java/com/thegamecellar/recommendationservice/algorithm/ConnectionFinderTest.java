@@ -5,6 +5,7 @@ import com.thegamecellar.recommendationservice.model.dto.game.GameDTO;
 import com.thegamecellar.recommendationservice.model.dto.library.UserGameDTO;
 import org.junit.jupiter.api.Test;
 
+import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -26,7 +27,7 @@ class ConnectionFinderTest {
 
         assertThat(c.seedIgdbId()).isEqualTo(1);
         assertThat(c.seedName()).isEqualTo("Hades");
-        assertThat(c.seedRating()).isEqualTo(9);
+        assertThat(c.seedRating()).isEqualByComparingTo("9");
         // Four features are shared; the three with the most profile weight are kept. Action loses
         // because Fantasy (also on Stardew Valley) sets the theme dimension's maximum above it.
         assertThat(c.sharedTags()).containsExactly("Adventure", "Indie", "mythology");
@@ -123,6 +124,29 @@ class ConnectionFinderTest {
     }
 
     @Test
+    void aHalfStepDecidesATieAndRidesAlongAsTheSeedRating() {
+        UserGameDTO nine = rated(1, "Nine", 9, List.of("Adventure", "Indie"), List.of(), List.of());
+        UserGameDTO nineAndAHalf = rated(2, "Nine and a half", 9.5, List.of("Adventure", "Indie"), List.of(), List.of());
+        GameDTO candidate = game(List.of("Adventure", "Indie"), List.of(), List.of());
+
+        Connection c = finder(List.of(nine, nineAndAHalf), List.of(nine, nineAndAHalf)).find(candidate);
+
+        assertThat(c.seedName()).isEqualTo("Nine and a half");
+        assertThat(c.seedRating()).isEqualByComparingTo("9.5");
+    }
+
+    @Test
+    void aHalfStepUnderTheSeedLineDoesNotSeed() {
+        UserGameDTO almost = rated(1, "Almost", 6.5, List.of("Adventure", "Indie"), List.of(), List.of());
+        GameDTO candidate = game(List.of("Adventure", "Indie"), List.of(), List.of());
+
+        Connection c = finder(List.of(almost), List.of(almost)).find(candidate);
+
+        assertThat(c.seedIgdbId()).isNull();
+        assertThat(c.seedRating()).isNull();
+    }
+
+    @Test
     void emptyProfileAndNoRatingsGiveNoConnection() {
         GameDTO candidate = game(List.of("Adventure"), List.of("Action"), List.of("mythology"));
 
@@ -155,11 +179,11 @@ class ConnectionFinderTest {
         return new UserProfile(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>(), Set.of(), 0);
     }
 
-    private static UserGameDTO rated(int igdbId, String name, int rating, List<String> genres, List<String> themes, List<String> tags) {
+    private static UserGameDTO rated(int igdbId, String name, double rating, List<String> genres, List<String> themes, List<String> tags) {
         UserGameDTO g = new UserGameDTO();
         g.setIgdbGameId(igdbId);
         g.setGameName(name);
-        g.setRating(rating);
+        g.setRating(BigDecimal.valueOf(rating));
         g.setStatus("COMPLETED");
         g.setGenres(genres);
         g.setThemes(themes);
