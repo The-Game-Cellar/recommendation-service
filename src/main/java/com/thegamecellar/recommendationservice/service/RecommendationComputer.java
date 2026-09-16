@@ -60,7 +60,7 @@ public class RecommendationComputer {
             List<String> platforms,
             Integer seedIgdbId,
             String seedName,
-            Integer seedRating,
+            BigDecimal seedRating,
             List<String> sharedTags
     ) {}
 
@@ -305,7 +305,7 @@ public class RecommendationComputer {
 
         List<UserGameDTO> topRated = ratedGames.stream()
                 .filter(g -> g.getRating() != null)
-                .sorted(Comparator.comparingInt(UserGameDTO::getRating).reversed())
+                .sorted(Comparator.comparing(UserGameDTO::getRating).reversed())
                 .limit(topN)
                 .toList();
         Set<Integer> ratedIds = topRated.stream()

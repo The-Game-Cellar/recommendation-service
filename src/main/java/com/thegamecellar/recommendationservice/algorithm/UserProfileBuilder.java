@@ -3,6 +3,7 @@ package com.thegamecellar.recommendationservice.algorithm;
 import com.thegamecellar.recommendationservice.model.dto.library.UserGameDTO;
 import com.thegamecellar.recommendationservice.model.dto.library.UserPlatformDTO;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -29,7 +30,7 @@ public class UserProfileBuilder {
     private UserProfileBuilder() {}
 
     public static Map<String, Double> build(List<UserGameDTO> ratedGames) {
-        Map<String, List<Integer>> genreRatings = new HashMap<>();
+        Map<String, List<BigDecimal>> genreRatings = new HashMap<>();
 
         for (UserGameDTO ratedGame : ratedGames) {
             if (ratedGame.getGenres() == null || ratedGame.getGenres().isEmpty()) {
@@ -41,9 +42,9 @@ public class UserProfileBuilder {
         }
 
         Map<String, Double> profile = new HashMap<>();
-        for (Map.Entry<String, List<Integer>> entry : genreRatings.entrySet()) {
+        for (Map.Entry<String, List<BigDecimal>> entry : genreRatings.entrySet()) {
             double avg = entry.getValue().stream()
-                    .mapToInt(Integer::intValue)
+                    .mapToDouble(BigDecimal::doubleValue)
                     .average()
                     .orElse(0.0);
             profile.put(entry.getKey(), avg);
@@ -256,9 +257,12 @@ public class UserProfileBuilder {
         }
     }
 
-    // Ratings <= 5 contribute zero (ambivalent / actively-disliked). 9-star weighs 4x a 6-star (rating-5).
-    private static double weightFor(int rating) {
-        return rating > 5 ? (rating - 5) : 0.0;
+    // Ratings <= 5 contribute zero (ambivalent / actively-disliked). 9 weighs 4x a 6 (rating - 5), and a
+    // half step counts: 5.5 weighs 0.5.
+    private static final BigDecimal NEUTRAL = BigDecimal.valueOf(5);
+
+    private static double weightFor(BigDecimal rating) {
+        return rating.compareTo(NEUTRAL) > 0 ? rating.subtract(NEUTRAL).doubleValue() : 0.0;
     }
 
     private static Map<String, Double> accumulatePlatform(List<UserGameDTO> games) {

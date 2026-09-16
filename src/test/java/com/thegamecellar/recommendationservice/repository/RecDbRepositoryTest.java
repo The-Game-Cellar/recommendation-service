@@ -84,7 +84,7 @@ class RecDbRepositoryTest {
                 .tier((short) 1).name("Test Game").backgroundImage("cover.jpg")
                 .rating(new BigDecimal("8.50"))
                 .genres(List.of("Action", "RPG")).platforms(List.of("PC"))
-                .seedIgdbId(7).seedName("Seed").seedRating((short) 9).sharedTags(List.of("RPG", "Fantasy"))
+                .seedIgdbId(7).seedName("Seed").seedRating(new BigDecimal("9.5")).sharedTags(List.of("RPG", "Fantasy"))
                 .computedAt(now).build();
         poolRepo.save(row);
         poolRepo.flush();
@@ -97,7 +97,7 @@ class RecDbRepositoryTest {
         assertThat(found.get().getPlatforms()).containsExactly("PC");
         assertThat(found.get().getSeedIgdbId()).isEqualTo(7);
         assertThat(found.get().getSeedName()).isEqualTo("Seed");
-        assertThat(found.get().getSeedRating()).isEqualTo((short) 9);
+        assertThat(found.get().getSeedRating()).isEqualByComparingTo("9.5");
         assertThat(found.get().getSharedTags()).containsExactly("RPG", "Fantasy");
 
         int deleted = poolRepo.deleteByUserId("user-A");

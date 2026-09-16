@@ -186,7 +186,7 @@ public class UserComputeProcessor {
                 .platforms(c.platforms())
                 .seedIgdbId(c.seedIgdbId())
                 .seedName(c.seedName())
-                .seedRating(c.seedRating() == null ? null : c.seedRating().shortValue())
+                .seedRating(c.seedRating())
                 .sharedTags(c.sharedTags() == null ? List.of() : c.sharedTags())
                 .computedAt(now)
                 .build();

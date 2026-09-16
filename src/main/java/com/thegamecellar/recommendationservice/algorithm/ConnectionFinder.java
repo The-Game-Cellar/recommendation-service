@@ -3,6 +3,7 @@ package com.thegamecellar.recommendationservice.algorithm;
 import com.thegamecellar.recommendationservice.model.dto.game.GameDTO;
 import com.thegamecellar.recommendationservice.model.dto.library.UserGameDTO;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -23,8 +24,9 @@ public final class ConnectionFinder {
     public static final int SEED_MIN_RATING = 7;
     public static final int SEED_MIN_OVERLAP = 2;
     public static final int MAX_SHARED = 3;
+    private static final BigDecimal SEED_MIN = BigDecimal.valueOf(SEED_MIN_RATING);
 
-    public record Connection(Integer seedIgdbId, String seedName, Integer seedRating, List<String> sharedTags) {
+    public record Connection(Integer seedIgdbId, String seedName, BigDecimal seedRating, List<String> sharedTags) {
         public static final Connection NONE = new Connection(null, null, null, List.of());
     }
 
@@ -43,7 +45,7 @@ public final class ConnectionFinder {
         if (ratedGames != null) {
             for (UserGameDTO g : ratedGames) {
                 if (g == null || g.getIgdbGameId() == null || g.getRating() == null) continue;
-                if (g.getRating() < SEED_MIN_RATING) continue;
+                if (g.getRating().compareTo(SEED_MIN) < 0) continue;
                 Map<String, Feature> f = features(g.getGenres(), g.getThemes(), g.getTags());
                 if (!f.isEmpty()) rated.add(new RatedFeatures(g, f.keySet()));
             }
@@ -67,7 +69,7 @@ public final class ConnectionFinder {
             if (overlap.size() < SEED_MIN_OVERLAP) continue;
             boolean better = seed == null
                     || overlap.size() > seedOverlap.size()
-                    || (overlap.size() == seedOverlap.size() && r.game().getRating() > seed.game().getRating());
+                    || (overlap.size() == seedOverlap.size() && r.game().getRating().compareTo(seed.game().getRating()) > 0);
             if (better) {
                 seed = r;
                 seedOverlap = overlap;

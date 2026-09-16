@@ -4,6 +4,7 @@ import com.thegamecellar.recommendationservice.model.dto.library.UserGameDTO;
 import com.thegamecellar.recommendationservice.model.dto.library.UserPlatformDTO;
 import org.junit.jupiter.api.Test;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 
@@ -28,6 +29,16 @@ class UserProfileBuilderTest {
 
         assertThat(profile).containsKey("RPG");
         assertThat(profile.get("RPG")).isEqualTo(7.0);
+    }
+
+    @Test
+    void build_averages_half_step_ratings() {
+        UserGameDTO game1 = ratedGame(1, 8.5, "RPG");
+        UserGameDTO game2 = ratedGame(2, 6, "RPG");
+
+        Map<String, Double> profile = UserProfileBuilder.build(List.of(game1, game2));
+
+        assertThat(profile.get("RPG")).isEqualTo(7.25);
     }
 
     @Test
@@ -125,14 +136,14 @@ class UserProfileBuilderTest {
         // Witcher 9★ → weight 4. DarkSouls 10★ → weight 5.
         UserGameDTO witcher = new UserGameDTO();
         witcher.setIgdbGameId(1);
-        witcher.setRating(9);
+        witcher.setRating(BigDecimal.valueOf(9));
         witcher.setGenres(List.of("RPG", "Adventure"));
         witcher.setThemes(List.of("Fantasy"));
         witcher.setTags(List.of("open world", "story rich"));
 
         UserGameDTO darkSouls = new UserGameDTO();
         darkSouls.setIgdbGameId(2);
-        darkSouls.setRating(10);
+        darkSouls.setRating(BigDecimal.valueOf(10));
         darkSouls.setGenres(List.of("RPG"));
         darkSouls.setThemes(List.of("Fantasy", "Action"));
         darkSouls.setTags(List.of("souls-like", "punishing"));
@@ -152,13 +163,13 @@ class UserProfileBuilderTest {
     void buildMultiDim_skips_ratings_at_or_below_5() {
         UserGameDTO mediocre = new UserGameDTO();
         mediocre.setIgdbGameId(1);
-        mediocre.setRating(5);
+        mediocre.setRating(BigDecimal.valueOf(5));
         mediocre.setGenres(List.of("RPG"));
         mediocre.setTags(List.of("open world"));
 
         UserGameDTO bad = new UserGameDTO();
         bad.setIgdbGameId(2);
-        bad.setRating(3);
+        bad.setRating(BigDecimal.valueOf(3));
         bad.setGenres(List.of("Action"));
 
         UserProfile profile = UserProfileBuilder.buildMultiDim(List.of(mediocre, bad));
@@ -172,12 +183,12 @@ class UserProfileBuilderTest {
     void buildMultiDim_high_rating_dominates_over_low_rating_for_same_feature() {
         UserGameDTO loved = new UserGameDTO();
         loved.setIgdbGameId(1);
-        loved.setRating(9);
+        loved.setRating(BigDecimal.valueOf(9));
         loved.setTags(List.of("open world"));
 
         UserGameDTO ok = new UserGameDTO();
         ok.setIgdbGameId(2);
-        ok.setRating(6);
+        ok.setRating(BigDecimal.valueOf(6));
         ok.setTags(List.of("open world"));
 
         UserProfile profile = UserProfileBuilder.buildMultiDim(List.of(loved, ok));
@@ -185,6 +196,18 @@ class UserProfileBuilderTest {
         // 9★ contributes 4, 6★ contributes 1 (4× ratio, sharper than the prior 1.5× when
         // raw rating drove the weight). open world should land at 5.
         assertThat(profile.tags()).containsEntry("open world", 5.0);
+    }
+
+    @Test
+    void buildMultiDim_weighs_half_steps_as_they_are() {
+        // 5.5 sits half a step over the neutral 5, 6.5 one and a half
+        UserGameDTO barelyLiked = ratedGame(1, 5.5, "RPG");
+        UserGameDTO liked = ratedGame(2, 6.5, "Action");
+
+        UserProfile profile = UserProfileBuilder.buildMultiDim(List.of(barelyLiked, liked));
+
+        assertThat(profile.genres()).containsEntry("RPG", 0.5);
+        assertThat(profile.genres()).containsEntry("Action", 1.5);
     }
 
     @Test
@@ -204,7 +227,7 @@ class UserProfileBuilderTest {
     void buildMultiDim_handles_null_dimension_lists_gracefully() {
         UserGameDTO sparse = new UserGameDTO();
         sparse.setIgdbGameId(1);
-        sparse.setRating(8);
+        sparse.setRating(BigDecimal.valueOf(8));
         sparse.setGenres(List.of("RPG"));
         // themes + tags left null (healing may not have completed for this row)
         UserProfile profile = UserProfileBuilder.buildMultiDim(List.of(sparse));
@@ -303,12 +326,12 @@ class UserProfileBuilderTest {
     void buildMultiDim_skips_null_or_blank_platform_values() {
         UserGameDTO nullPlat = new UserGameDTO();
         nullPlat.setIgdbGameId(1);
-        nullPlat.setRating(9);
+        nullPlat.setRating(BigDecimal.valueOf(9));
         nullPlat.setPlatform(null);
 
         UserGameDTO blankPlat = new UserGameDTO();
         blankPlat.setIgdbGameId(2);
-        blankPlat.setRating(9);
+        blankPlat.setRating(BigDecimal.valueOf(9));
         blankPlat.setPlatform("   ");
 
         UserGameDTO valid = ratedOnPlatform(3, 9, "PC");
@@ -603,7 +626,7 @@ class UserProfileBuilderTest {
         assertThat(fourArg.genres()).isEqualTo(threeArg.genres());
     }
 
-    private UserGameDTO ratedGameWithTag(int igdbId, int rating, String genre, String tag) {
+    private UserGameDTO ratedGameWithTag(int igdbId, double rating, String genre, String tag) {
         UserGameDTO g = ratedGame(igdbId, rating, genre);
         g.setTags(List.of(tag));
         return g;
@@ -683,28 +706,28 @@ class UserProfileBuilderTest {
         return p;
     }
 
-    private UserGameDTO ratedGame(int igdbId, int rating, String... genres) {
+    private UserGameDTO ratedGame(int igdbId, double rating, String... genres) {
         UserGameDTO game = new UserGameDTO();
         game.setIgdbGameId(igdbId);
-        game.setRating(rating);
+        game.setRating(BigDecimal.valueOf(rating));
         if (genres.length > 0) {
             game.setGenres(List.of(genres));
         }
         return game;
     }
 
-    private UserGameDTO ratedOnPlatform(int igdbId, int rating, String platform) {
+    private UserGameDTO ratedOnPlatform(int igdbId, double rating, String platform) {
         UserGameDTO game = new UserGameDTO();
         game.setIgdbGameId(igdbId);
-        game.setRating(rating);
+        game.setRating(BigDecimal.valueOf(rating));
         game.setPlatform(platform);
         return game;
     }
 
-    private UserGameDTO ratedWithRelease(int igdbId, int rating, String released) {
+    private UserGameDTO ratedWithRelease(int igdbId, double rating, String released) {
         UserGameDTO game = new UserGameDTO();
         game.setIgdbGameId(igdbId);
-        game.setRating(rating);
+        game.setRating(BigDecimal.valueOf(rating));
         game.setReleased(released);
         return game;
     }

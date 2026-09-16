@@ -388,7 +388,7 @@ public class RecommendationService {
                 .tier(tier)
                 .seedIgdbId(row.getSeedIgdbId())
                 .seedName(row.getSeedName())
-                .seedRating(row.getSeedRating() == null ? null : row.getSeedRating().intValue())
+                .seedRating(row.getSeedRating())
                 .sharedTags(row.getSharedTags() == null ? List.of() : row.getSharedTags())
                 .build();
     }
