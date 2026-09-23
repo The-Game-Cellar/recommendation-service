@@ -43,7 +43,9 @@ public class RecommendationService {
     private static final int SAMPLE_POOL = 200;
     private static final double MMR_LAMBDA = 0.85;
 
-    public static final int GROUPED_TARGET_ROWS = 8;
+    // The Recommendations page shows five genre shelves plus the long-tail one; allocating across more
+    // genres thins the rows that render and places games in rows that never reach the page.
+    public static final int GROUPED_TARGET_ROWS = 5;
     public static final int GROUPED_PER_ROW = 15;
 
     private final UserCandidatePoolRepository poolRepository;

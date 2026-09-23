@@ -103,7 +103,7 @@ All endpoints require JWT. `userId` is extracted from `@AuthenticationPrincipal 
 | Method | Path                                                       | Description                                                                                          |
 |--------|------------------------------------------------------------|------------------------------------------------------------------------------------------------------|
 | POST   | `/api/v1/recommendations/personalized`                     | Three-tier personalized recommendations served from the pre-computed pool. Body `{ limit, recentlyShownIds[] }`. |
-| POST   | `/api/v1/recommendations/personalized/grouped`             | Genre-bucketed rows (up to 8 rows x 15 games + 1 long-tail) from the same pool. Body `{ recentlyShownIds[] }`. |
+| POST   | `/api/v1/recommendations/personalized/grouped`             | Genre-bucketed rows (up to 5 rows x 15 games + 1 long-tail) from the same pool. Body `{ recentlyShownIds[] }`. |
 | POST   | `/api/v1/recommendations/personalized/grouped/genre`       | Per-row refresh button. Returns one fresh row + enqueues per-genre top-up. Body `{ genre, recentlyShownIds[] }`. |
 | GET    | `/api/v1/recommendations/wildcard?limit={n}`               | Random discovery from game-service catalog, library + platform filter applied in rec-service.        |
 | GET    | `/api/v1/recommendations/similar/{gameId}`                 | Similar games to a given game.                                                                       |
