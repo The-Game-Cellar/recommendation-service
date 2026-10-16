@@ -36,7 +36,7 @@ Real-time scoring path (current production behavior on `/personalized`, `/wildca
 - `@Scheduled` per-user worker (fixed thread pool size 5) + `@Transactional` UserComputeProcessor
 - `RestTemplate` for inter-service calls (forwards the user's JWT in the request path, X-Internal-Token in the worker path)
 - Pure-function algorithm classes (`UserProfileBuilder`, `SimilarityScorer`, `MMRReRanker`, `TierSelector`)
-- Testcontainers for repository integration tests (`RecDbRepositoryTest`)
+- Testcontainers for the Postgres-backed tests (`RecDbRepositoryTest`, `RecommendationPipelineIntegrationTest`, `AccountEndpointsTest`)
 - Sentry for error tracking (`sentry-spring-boot-4` + `sentry-logback`)
 
 ## Algorithm
@@ -110,6 +110,7 @@ All endpoints require JWT. `userId` is extracted from `@AuthenticationPrincipal 
 | GET    | `/api/v1/recommendations/because-you-liked/{gameId}`       | Recommendations anchored to a specific game.                                                         |
 | GET    | `/api/v1/recommendations/dashboard/because-you-liked?excludeSeedIgdbIds={ids}` | Dashboard refresh for a BYL section. Re-rolls seed excluding currently-shown ids. |
 | POST   | `/api/v1/recommendations/dashboard`                        | Combined dashboard payload (recs + 2 BYL sections + wildcard). Body `{ recentlyShownIds?: number[] }`.|
+| GET    | `/api/v1/recommendations/account/export`                   | Every column of the caller's `user_profiles`, `user_candidate_pool`, `pool_holding` and `compute_queue` rows, read in one transaction. Called by the gateway's account export, which puts it beside the account and the library. |
 | DELETE | `/api/v1/recommendations/account`                          | Purges the caller's `compute_queue`, `pool_holding`, `user_candidate_pool` and `user_profiles` rows in one transaction, then evicts the caller's Redis cache entries, reporting what was removed per table. The queue row goes first, so a compute in flight is waited out and its rows removed. Called by the gateway's account delete before the library purge, since everything here is rebuilt from the library. |
 | POST   | `/api/v1/admin/rec/enqueue?userId={uuid}`                  | Admin-only. Upserts a row in `compute_queue` so the per-user worker recomputes on next tick. Requires ROLE_ADMIN. |
 
@@ -196,7 +197,7 @@ docker compose up recommendation-service
 ./mvnw test
 ```
 
-Algorithm classes (`UserProfileBuilder`, `SimilarityScorer`, `TierSelector`, `MMRReRanker`) are pure functions and tested without mocks. Service-layer tests use mocked clients. Two tests run against a real Postgres 17 started by Testcontainers with the real Flyway schema: `RecDbRepositoryTest` for the tables, JSONB round trips and `SKIP LOCKED` dequeueing, and `RecommendationPipelineIntegrationTest` for the whole compute path, from a queued user through tier selection, candidate fetching and scoring to the pool and profile rows, and then the read path serving from them. Only the HTTP clients are mocked. Both need a Docker daemon and skip themselves where none is reachable.
+Algorithm classes (`UserProfileBuilder`, `SimilarityScorer`, `TierSelector`, `MMRReRanker`) are pure functions and tested without mocks. Service-layer tests use mocked clients. Three tests run against a real Postgres 17 started by Testcontainers with the real Flyway schema: `RecDbRepositoryTest` for the tables, JSONB round trips and `SKIP LOCKED` dequeueing, `RecommendationPipelineIntegrationTest` for the whole compute path, from a queued user through tier selection, candidate fetching and scoring to the pool and profile rows, and then the read path serving from them, and `AccountEndpointsTest`, which drives the export and account-delete endpoints over HTTP through the real security chain: no token or a rejected one is refused with nothing touched, and a token for one user exports and purges only that user's rows while another user's stay. Only the HTTP clients are mocked. They need a Docker daemon and skip themselves where none is reachable. `AccountExportServiceTest` fails when an entity carrying a user id, or a column on one, is missing from the export, and `AccountPurgeServiceTest` when such an entity is missing from the purge.
 
 ## Known Limitations
 

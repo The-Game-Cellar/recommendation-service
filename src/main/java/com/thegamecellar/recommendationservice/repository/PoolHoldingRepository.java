@@ -12,6 +12,8 @@ import java.util.List;
 
 public interface PoolHoldingRepository extends JpaRepository<PoolHolding, PoolHoldingId> {
 
+    List<PoolHolding> findByUserId(String userId);
+
     @Query("SELECT h.igdbId FROM PoolHolding h WHERE h.userId = :userId AND h.genre = :genre")
     List<Integer> findIgdbIdsForUserGenre(@Param("userId") String userId, @Param("genre") String genre);
 
