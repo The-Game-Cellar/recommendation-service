@@ -110,6 +110,7 @@ All endpoints require JWT. `userId` is extracted from `@AuthenticationPrincipal 
 | GET    | `/api/v1/recommendations/because-you-liked/{gameId}`       | Recommendations anchored to a specific game.                                                         |
 | GET    | `/api/v1/recommendations/dashboard/because-you-liked?excludeSeedIgdbIds={ids}` | Dashboard refresh for a BYL section. Re-rolls seed excluding currently-shown ids. |
 | POST   | `/api/v1/recommendations/dashboard`                        | Combined dashboard payload (recs + 2 BYL sections + wildcard). Body `{ recentlyShownIds?: number[] }`.|
+| DELETE | `/api/v1/recommendations/account`                          | Purges the caller's `compute_queue`, `pool_holding`, `user_candidate_pool` and `user_profiles` rows in one transaction, then evicts the caller's Redis cache entries, reporting what was removed per table. The queue row goes first, so a compute in flight is waited out and its rows removed. Called by the gateway's account delete before the library purge, since everything here is rebuilt from the library. |
 | POST   | `/api/v1/admin/rec/enqueue?userId={uuid}`                  | Admin-only. Upserts a row in `compute_queue` so the per-user worker recomputes on next tick. Requires ROLE_ADMIN. |
 
 ## Service Communication

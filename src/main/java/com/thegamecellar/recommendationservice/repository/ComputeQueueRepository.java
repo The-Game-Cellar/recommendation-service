@@ -53,4 +53,10 @@ public interface ComputeQueueRepository extends JpaRepository<ComputeQueueEntry,
     @Modifying
     @Query("UPDATE ComputeQueueEntry q SET q.attempts = q.attempts + 1 WHERE q.userId = :userId")
     void incrementAttempts(@Param("userId") String userId);
+
+    // Bulk DELETE, not deleteById: it waits on the lock a running compute holds and then removes
+    // nothing, where find-then-remove fails on the row count once the worker has dequeued it.
+    @Modifying
+    @Query("DELETE FROM ComputeQueueEntry q WHERE q.userId = :userId")
+    int deleteByUserId(@Param("userId") String userId);
 }

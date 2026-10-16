@@ -1,9 +1,11 @@
 package com.thegamecellar.recommendationservice.repository;
 
 import com.thegamecellar.recommendationservice.model.entity.ComputeQueueEntry;
+import com.thegamecellar.recommendationservice.model.entity.PoolHolding;
 import com.thegamecellar.recommendationservice.model.entity.UserCandidatePool;
 import com.thegamecellar.recommendationservice.model.entity.UserCandidatePoolId;
 import com.thegamecellar.recommendationservice.model.entity.UserProfileSnapshot;
+import com.thegamecellar.recommendationservice.service.AccountPurgeService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -73,6 +75,8 @@ class RecDbRepositoryTest {
     @Autowired UserCandidatePoolRepository poolRepo;
     @Autowired UserProfileSnapshotRepository profileRepo;
     @Autowired ComputeQueueRepository queueRepo;
+    @Autowired PoolHoldingRepository holdingRepo;
+    @Autowired AccountPurgeService accountPurgeService;
     @Autowired TransactionTemplate txTemplate;
 
     @Test
@@ -237,5 +241,108 @@ class RecDbRepositoryTest {
 
         assertThat(firstSeen.get()).isEqualTo("user-E1");
         assertThat(secondSeen.get()).isEqualTo("user-E2");
+    }
+
+    @Test
+    void accountPurge_removesEveryRowForTheUserAndNoOtherUsers() {
+        txTemplate.executeWithoutResult(s -> {
+            for (String user : List.of("purge-me", "keep-me")) {
+                poolRepo.save(poolRow(user, 1));
+                profileRepo.save(profile(user));
+                queueRepo.upsert(user, LocalDateTime.now());
+                holdingRepo.save(PoolHolding.builder()
+                        .userId(user).genre("RPG").igdbId(1).releasedAt(LocalDateTime.now()).build());
+            }
+        });
+        try {
+            AccountPurgeService.PurgeResult result = accountPurgeService.purgeUser("purge-me");
+
+            assertThat(result).isEqualTo(new AccountPurgeService.PurgeResult(1, 1, 1, 1));
+            assertThat(poolRepo.existsByUserId("purge-me")).isFalse();
+            assertThat(profileRepo.findById("purge-me")).isEmpty();
+            assertThat(queueRepo.findById("purge-me")).isEmpty();
+            assertThat(holdingRepo.findIgdbIdsForUserGenre("purge-me", "RPG")).isEmpty();
+
+            assertThat(poolRepo.existsByUserId("keep-me")).isTrue();
+            assertThat(profileRepo.findById("keep-me")).isPresent();
+            assertThat(queueRepo.findById("keep-me")).isPresent();
+            assertThat(holdingRepo.findIgdbIdsForUserGenre("keep-me", "RPG")).containsExactly(1);
+        } finally {
+            deleteEverything();
+        }
+    }
+
+    // A compute that dequeued the user before the purge holds the queue row's lock and writes
+    // its results on commit. The purge must wait for that commit, then remove what it wrote;
+    // otherwise the rows outlive the account and the stale scanner recomputes them forever.
+    @Test
+    void accountPurge_waitsForAComputeInFlightAndRemovesWhatItWrote() throws Exception {
+        txTemplate.executeWithoutResult(s -> queueRepo.upsert("in-flight", LocalDateTime.now()));
+
+        ExecutorService exec = Executors.newFixedThreadPool(2);
+        java.util.concurrent.CountDownLatch dequeued = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch finishCompute = new java.util.concurrent.CountDownLatch(1);
+        try {
+            CompletableFuture<Void> compute = CompletableFuture.runAsync(() -> txTemplate.executeWithoutResult(s -> {
+                queueRepo.dequeueBatch(org.springframework.data.domain.PageRequest.of(0, 1));
+                dequeued.countDown();
+                try {
+                    finishCompute.await(5, TimeUnit.SECONDS);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                }
+                poolRepo.save(poolRow("in-flight", 1));
+                profileRepo.save(profile("in-flight"));
+                queueRepo.deleteById("in-flight");
+            }), exec);
+            assertThat(dequeued.await(5, TimeUnit.SECONDS)).isTrue();
+
+            CompletableFuture<AccountPurgeService.PurgeResult> purge =
+                    CompletableFuture.supplyAsync(() -> accountPurgeService.purgeUser("in-flight"), exec);
+            Thread.sleep(500);
+            assertThat(purge).isNotDone();
+
+            finishCompute.countDown();
+            compute.get(5, TimeUnit.SECONDS);
+            AccountPurgeService.PurgeResult result = purge.get(5, TimeUnit.SECONDS);
+
+            assertThat(result.queueRemoved()).isZero();
+            assertThat(result.poolRemoved()).isEqualTo(1);
+            assertThat(result.profileRemoved()).isEqualTo(1);
+            assertThat(poolRepo.existsByUserId("in-flight")).isFalse();
+            assertThat(profileRepo.findById("in-flight")).isEmpty();
+        } finally {
+            exec.shutdownNow();
+            deleteEverything();
+        }
+    }
+
+    private void deleteEverything() {
+        txTemplate.executeWithoutResult(s -> {
+            poolRepo.deleteAll();
+            profileRepo.deleteAll();
+            queueRepo.deleteAll();
+            holdingRepo.deleteAll();
+        });
+    }
+
+    private static UserCandidatePool poolRow(String userId, int igdbId) {
+        return UserCandidatePool.builder()
+                .userId(userId).igdbId(igdbId).baseScore(new BigDecimal("0.5000")).tier((short) 1)
+                .name("g" + igdbId).rating(new BigDecimal("7.50"))
+                .genres(List.of("RPG")).platforms(List.of("PC"))
+                .computedAt(LocalDateTime.now()).build();
+    }
+
+    private static UserProfileSnapshot profile(String userId) {
+        return UserProfileSnapshot.builder()
+                .userId(userId)
+                .genreWeights(Map.of("RPG", 1.0))
+                .tagWeights(Map.of())
+                .platformWeights(Map.of("PC", 1.0))
+                .decadeWeights(Map.of())
+                .ratedCount(1)
+                .updatedAt(LocalDateTime.now())
+                .build();
     }
 }
