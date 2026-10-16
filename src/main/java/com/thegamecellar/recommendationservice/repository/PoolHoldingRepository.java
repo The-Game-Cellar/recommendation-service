@@ -18,4 +18,8 @@ public interface PoolHoldingRepository extends JpaRepository<PoolHolding, PoolHo
     @Modifying
     @Query("DELETE FROM PoolHolding h WHERE h.releasedAt < :cutoff")
     int deleteExpired(@Param("cutoff") LocalDateTime cutoff);
+
+    @Modifying
+    @Query("DELETE FROM PoolHolding h WHERE h.userId = :userId")
+    int deleteByUserId(@Param("userId") String userId);
 }
