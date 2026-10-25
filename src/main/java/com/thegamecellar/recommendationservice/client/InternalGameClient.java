@@ -1,5 +1,6 @@
 package com.thegamecellar.recommendationservice.client;
 
+import com.thegamecellar.recommendationservice.exception.ServiceCommunicationException;
 import com.thegamecellar.recommendationservice.model.dto.game.GameDTO;
 import com.thegamecellar.recommendationservice.model.dto.game.GameSearchDTO;
 import lombok.extern.slf4j.Slf4j;
@@ -65,8 +66,9 @@ public class InternalGameClient {
             if (body == null || body.getGames() == null) return Collections.emptyList();
             return body.getGames();
         } catch (RestClientException ex) {
-            log.warn("Internal game-service getPopularGames failed: {}", ex.getClass().getSimpleName());
-            return Collections.emptyList();
+            // Thrown rather than an empty list, which the worker would write as an empty pool over the
+            // user's current one. The processor retries the job, then drops it.
+            throw new ServiceCommunicationException("Internal game-service getPopularGames failed", ex);
         }
     }
 
@@ -85,8 +87,8 @@ public class InternalGameClient {
             if (body == null || body.getGames() == null) return Collections.emptyList();
             return body.getGames();
         } catch (RestClientException ex) {
-            log.warn("Internal game-service randomQualityByGenre('{}') failed: {}", genre, ex.getClass().getSimpleName());
-            return Collections.emptyList();
+            // Thrown for the same reason as getPopularGames.
+            throw new ServiceCommunicationException("Internal game-service randomQualityByGenre('" + genre + "') failed", ex);
         }
     }
 

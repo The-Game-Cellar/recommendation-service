@@ -13,6 +13,7 @@ import com.thegamecellar.recommendationservice.repository.PoolHoldingRepository;
 import com.thegamecellar.recommendationservice.repository.UserCandidatePoolRepository;
 import com.thegamecellar.recommendationservice.repository.UserProfileSnapshotRepository;
 import com.thegamecellar.recommendationservice.service.RecommendationComputer;
+import com.thegamecellar.recommendationservice.service.UserProfileCache;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -53,6 +54,7 @@ public class UserComputeProcessor {
     private final RecommendationComputer computer;
     private final InternalLibraryClient libraryClient;
     private final InternalGameClient gameClient;
+    private final UserProfileCache profileCache;
 
     @Value("${recommendation.pool.size:2500}")
     private int poolSize;
@@ -248,5 +250,6 @@ public class UserComputeProcessor {
                 .updatedAt(now)
                 .build();
         profileRepository.save(snapshot);
+        profileCache.invalidateAfterCommit(userId);
     }
 }
