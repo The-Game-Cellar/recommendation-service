@@ -36,7 +36,7 @@ Real-time scoring path (current production behavior on `/personalized`, `/wildca
 - `@Scheduled` per-user worker (fixed thread pool size 5) + `@Transactional` UserComputeProcessor
 - `RestTemplate` for inter-service calls (forwards the user's JWT in the request path, X-Internal-Token in the worker path)
 - Pure-function algorithm classes (`UserProfileBuilder`, `SimilarityScorer`, `MMRReRanker`, `TierSelector`)
-- Testcontainers for the Postgres-backed tests (`RecDbRepositoryTest`, `RecommendationPipelineIntegrationTest`, `AccountEndpointsTest`)
+- Testcontainers (Postgres 17 + Redis 7) for every Spring test, shared through `RecommendationServiceTestBase`
 - Sentry for error tracking (`sentry-spring-boot-4` + `sentry-logback`)
 
 ## Algorithm
@@ -148,8 +148,8 @@ Read paths:
 | `RECOMMENDATION_REFILL_THRESHOLD_PERCENT` | `50`                                     | Pool depletion percentage that triggers an async refill |
 | `RECOMMENDATION_STALE_TTL_HOURS`  | `24`                                             | Pool rows older than this trigger an async refill while still serving current data |
 | `RECOMMENDATION_USER_STATE_TTL_SECONDS` | `300`                                      | Redis TTL for the userLibrary + userPlatforms caches (wildcard exclusion) |
-| `recommendation.cache.user-profile-ttl-seconds` | `600`                              | Redis TTL for the UserProfileSnapshot cache (Phase 6). Invalidated on library-write events. |
-| `recommendation.library-write-subscriber.enabled` | `true`                           | Phase 5 Redis subscriber gate. Disabled in tests to bypass Redis-conn requirement. |
+| `recommendation.cache.user-profile-ttl-seconds` | `600`                              | Redis TTL for the UserProfileSnapshot cache (Phase 6). Invalidated on library-write events, after a compute writes a new profile, and on account purge. |
+| `recommendation.library-write-subscriber.enabled` | `true`                           | Phase 5 Redis subscriber gate. |
 | `recommendation.stale-scan.fixed-delay-ms` | `3600000`                               | StaleScanner hourly interval (Phase 6). |
 | `recommendation.stale-scan.initial-delay-ms` | `300000`                              | StaleScanner initial delay after startup (5 min). |
 | `recommendation.worker.fixed-delay-ms` | `30000`                                     | Per-user worker scheduler delay between batches (ms) |
@@ -197,7 +197,21 @@ docker compose up recommendation-service
 ./mvnw test
 ```
 
-Algorithm classes (`UserProfileBuilder`, `SimilarityScorer`, `TierSelector`, `MMRReRanker`) are pure functions and tested without mocks. Service-layer tests use mocked clients. Three tests run against a real Postgres 17 started by Testcontainers with the real Flyway schema: `RecDbRepositoryTest` for the tables, JSONB round trips and `SKIP LOCKED` dequeueing, `RecommendationPipelineIntegrationTest` for the whole compute path, from a queued user through tier selection, candidate fetching and scoring to the pool and profile rows, and then the read path serving from them, and `AccountEndpointsTest`, which drives the export and account-delete endpoints over HTTP through the real security chain: no token or a rejected one is refused with nothing touched, and a token for one user exports and purges only that user's rows while another user's stay. Only the HTTP clients are mocked. They need a Docker daemon and skip themselves where none is reachable. `AccountExportServiceTest` fails when an entity carrying a user id, or a column on one, is missing from the export, and `AccountPurgeServiceTest` when such an entity is missing from the purge.
+Algorithm classes (`UserProfileBuilder`, `SimilarityScorer`, `TierSelector`, `MMRReRanker`) are pure functions and tested without mocks.
+
+The Spring tests share `RecommendationServiceTestBase`: one Postgres 17 and one Redis 7 container for the whole suite, Flyway on with `ddl-auto=validate`, the production `application.yaml` with an `application-test.yaml` profile on top, MockMvc through the real security chain, and a mocked `JwtDecoder` that issues Keycloak-shaped tokens so the realm-role converter runs. game-service and library-service are stub HTTP servers at their URLs, so the service's own clients run, forwarded bearer token and `X-Internal-Token` included. Every table is emptied and Redis flushed after each test. They need a Docker daemon; without one the build fails rather than skipping them.
+
+- `RecommendationEndpointsTest` drives every recommendation endpoint and the admin enqueue over HTTP: the answer when it works, `401` without a token or with a rejected one, the `204` answers, a failing game-service or library-service, and `202` for an admin and `403` for anyone else on the enqueue.
+- `UserIsolationTest` proves on each user-keyed endpoint that a request answers from the caller's pool, profile, library and cached state alone, forwards only the caller's token, and leaves another user's rows and cache entries unchanged.
+- `RequestValidationTest` sends malformed requests and expects `400`, `405`, `415` or `406` with no ERROR log line.
+- `AccountEndpointsTest` drives export and account delete: no token or a rejected one is refused with nothing touched, and a token for one user exports and purges only that user's rows.
+- `RecDbRepositoryTest` runs the repositories on Postgres: the queue's upserts and `SKIP LOCKED` dequeue, the stale-user query, holding expiry, the JSONB round trips and the purge, including a purge that waits for a compute in flight.
+- `RecommendationPipelineIntegrationTest` runs the compute from a queued user through the internal endpoints, tier selection, fetching and scoring to the pool and profile, then the read endpoint serving it; the per-genre top-up with its holding set; a library-service or game-service outage, which retries and then drops the job with the user's pool untouched; and the live fallback before the first compute.
+- `UserProfileCacheTest` proves on a real Redis that a cached profile is served without the database, and that a compute writing a new profile drops the cached one once its transaction commits.
+- `WorkerJobsTest` runs the stale scan and one worker tick, whose five tasks compute five users at once.
+- `LibraryWriteChannelTest` publishes on the real `library-write` channel and expects the recompute to be queued.
+
+`AccountExportServiceTest` fails when an entity carrying a user id, or a column on one, is missing from the export, and `AccountPurgeServiceTest` when such an entity is missing from the purge.
 
 ## Known Limitations
 

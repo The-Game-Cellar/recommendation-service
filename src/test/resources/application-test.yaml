@@ -1,0 +1,26 @@
+# Overrides on top of the production application.yaml, which loads first. The datasource, Redis and the
+# two service URLs come from the containers and the stubs in RecommendationServiceTestBase.
+spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri:
+          jwk-set-uri: https://unused
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+
+security:
+  internal:
+    token: test-internal-token
+
+# The scheduled worker and stale scan wait an hour before their first tick, so neither fires mid-suite
+# and dequeues or enqueues rows a test seeded; the tests run them themselves.
+recommendation:
+  worker:
+    initial-delay-ms: 3600000
+  stale-scan:
+    initial-delay-ms: 3600000

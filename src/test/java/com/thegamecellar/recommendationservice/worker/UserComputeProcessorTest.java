@@ -11,6 +11,7 @@ import com.thegamecellar.recommendationservice.repository.PoolHoldingRepository;
 import com.thegamecellar.recommendationservice.repository.UserCandidatePoolRepository;
 import com.thegamecellar.recommendationservice.repository.UserProfileSnapshotRepository;
 import com.thegamecellar.recommendationservice.service.RecommendationComputer;
+import com.thegamecellar.recommendationservice.service.UserProfileCache;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -45,13 +46,14 @@ class UserComputeProcessorTest {
     @Mock private RecommendationComputer computer;
     @Mock private InternalLibraryClient libraryClient;
     @Mock private InternalGameClient gameClient;
+    @Mock private UserProfileCache profileCache;
 
     private UserComputeProcessor processor;
 
     @BeforeEach
     void setUp() {
         processor = new UserComputeProcessor(queueRepository, poolRepository,
-                profileRepository, holdingRepository, computer, libraryClient, gameClient);
+                profileRepository, holdingRepository, computer, libraryClient, gameClient, profileCache);
         ReflectionTestUtils.setField(processor, "poolSize", 1000);
     }
 

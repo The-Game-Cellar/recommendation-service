@@ -7,14 +7,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.Duration;
 import java.util.Optional;
 
-// Redis-cached read of user_profiles. UserProfileSnapshot is read on every /personalized
-// /personalized/grouped request to derive row order and other user-state hints; avoiding
-// the DB hop makes the warm path purely pool-read + in-mem scoring. Invalidated by the
-// library-write subscriber path (Phase 5) so user-rated changes propagate immediately.
+// Redis-cached read of user_profiles, which /personalized/grouped reads on every request for its row
+// order. Dropped on a library write, after a compute writes a new profile, and on account purge.
 @Slf4j
 @Service
 public class UserProfileCache {
@@ -25,7 +25,7 @@ public class UserProfileCache {
     private final Duration ttl;
 
     @Autowired(required = false)
-    private RedisTemplate<String, Object> redis;
+    private RedisTemplate<String, UserProfileSnapshot> redis;
 
     public UserProfileCache(UserProfileSnapshotRepository profileRepository,
                             @Value("${recommendation.cache.user-profile-ttl-seconds:600}") long ttlSeconds) {
@@ -37,9 +37,9 @@ public class UserProfileCache {
         String key = KEY_PREFIX + userId;
         if (redis != null) {
             try {
-                Object cached = redis.opsForValue().get(key);
-                if (cached instanceof UserProfileSnapshot snap) {
-                    return Optional.of(snap);
+                UserProfileSnapshot cached = redis.opsForValue().get(key);
+                if (cached != null) {
+                    return Optional.of(cached);
                 }
             } catch (RuntimeException ex) {
                 log.warn("Redis read failed for {}: {}", key, ex.getClass().getSimpleName());
@@ -64,5 +64,20 @@ public class UserProfileCache {
         } catch (RuntimeException ex) {
             log.warn("Redis invalidate failed for {}: {}", userId, ex.getClass().getSimpleName());
         }
+    }
+
+    // Inside a transaction the drop waits for the commit: dropped earlier, a read racing the writer
+    // would load the old row and cache it again.
+    public void invalidateAfterCommit(String userId) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            invalidate(userId);
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                invalidate(userId);
+            }
+        });
     }
 }

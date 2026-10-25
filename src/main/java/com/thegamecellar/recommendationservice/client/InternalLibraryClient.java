@@ -1,11 +1,11 @@
 package com.thegamecellar.recommendationservice.client;
 
+import com.thegamecellar.recommendationservice.exception.ServiceCommunicationException;
 import com.thegamecellar.recommendationservice.model.dto.library.UserGameDTO;
 import com.thegamecellar.recommendationservice.model.dto.library.UserGenrePreferenceDTO;
 import com.thegamecellar.recommendationservice.model.dto.library.UserPlatformDTO;
 import com.thegamecellar.recommendationservice.model.dto.library.UserReleaseYearPreferenceDTO;
 import com.thegamecellar.recommendationservice.model.dto.library.UserTagPreferenceDTO;
-import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
@@ -22,7 +22,6 @@ import java.util.List;
 
 // Used by PerUserWorker which runs scheduled without a user JWT. Hits /internal/library/users/{userId}/*
 // in library-service, authenticated via the shared INTERNAL_SERVICE_TOKEN header.
-@Slf4j
 @Component
 public class InternalLibraryClient {
 
@@ -78,9 +77,9 @@ public class InternalLibraryClient {
             if (response.getBody() == null) return Collections.emptyList();
             return Arrays.asList(response.getBody());
         } catch (RestClientException ex) {
-            log.warn("Internal library-service call failed ({}): {}, returning empty list",
-                    suffix, ex.getClass().getSimpleName());
-            return Collections.emptyList();
+            // Thrown rather than an empty list, which the worker would take for an empty library and
+            // write over the user's pool and profile. The processor retries the job, then drops it.
+            throw new ServiceCommunicationException("Internal library-service call failed (" + suffix + ")", ex);
         }
     }
 
