@@ -208,9 +208,99 @@ class RecommendationEndpointsTest extends RecommendationServiceTestBase {
 
         assertThat(GAME_SERVICE.recorded("GET", "/api/v1/games/random")).singleElement()
                 .satisfies(call -> {
-                    assertThat(call.query()).isEqualTo("limit=50");
+                    assertThat(call.query()).isEqualTo("limit=50&platform=PC");
                     assertThat(call.header("Authorization")).isEqualTo(bearer(ALICE_TOKEN));
                 });
+    }
+
+    private String randomQuery() {
+        return GAME_SERVICE.recorded("GET", "/api/v1/games/random").get(0).query();
+    }
+
+    // Fifty per platform is asked for, so every platform on the profile weighs the same in the hand.
+    @Test
+    void wildcardOnMineAsksForFiftyOnEachProfilePlatform() throws Exception {
+        ownsPlatform(ALICE, "PlayStation 5");
+        randomGames();
+
+        as(ALICE_TOKEN, get(WILDCARD).param("scope", "mine")).andExpect(status().isOk());
+
+        assertThat(randomQuery()).startsWith("limit=100&").contains("platform=PC", "platform=PlayStation%205");
+    }
+
+    @Test
+    void wildcardOnMineNarrowsToAPickOnTheProfileAndIgnoresOneOffIt() throws Exception {
+        ownsPlatform(ALICE, "PlayStation 5");
+        randomGames();
+
+        as(ALICE_TOKEN, get(WILDCARD).param("platform", "PlayStation 5", "Nintendo Switch")).andExpect(status().isOk());
+        assertThat(randomQuery()).isEqualTo("limit=50&platform=PlayStation%205");
+
+        GAME_SERVICE.reset();
+        randomGames();
+        as(ALICE_TOKEN, get(WILDCARD).param("platform", "Nintendo Switch")).andExpect(status().isOk());
+        assertThat(randomQuery()).startsWith("limit=100&").doesNotContain("Switch");
+    }
+
+    // Splatoon is off Alice's PC profile, so only ALL deals it.
+    @Test
+    void wildcardOnAllWithNothingPickedDealsFromTheWholeCatalog() throws Exception {
+        catalogGame(3001, "Celeste", "Platform", "PC");
+        catalogGame(3002, "Splatoon", "Shooter", "Nintendo Switch");
+        randomGames(3001, 3002);
+
+        as(ALICE_TOKEN, get(WILDCARD).param("scope", "all"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[*].igdbId", contains(3001, 3002)));
+
+        assertThat(randomQuery()).isEqualTo("limit=50");
+        assertThat(LIBRARY_SERVICE.recorded("GET", "/api/v1/library/platforms")).isEmpty();
+    }
+
+    @Test
+    void wildcardOnAllDealsOnlyThePickedPlatformsEvenOffTheProfile() throws Exception {
+        catalogGame(3001, "Celeste", "Platform", "PC");
+        catalogGame(3002, "Splatoon", "Shooter", "Nintendo Switch");
+        randomGames(3001, 3002);
+
+        as(ALICE_TOKEN, get(WILDCARD).param("scope", "all").param("platform", "Nintendo Switch"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[*].igdbId", contains(3002)));
+
+        assertThat(randomQuery()).isEqualTo("limit=50&platform=Nintendo%20Switch");
+    }
+
+    // A profile without platforms has nothing to keep the hand on, so MINE deals from everything.
+    @Test
+    void wildcardOnMineForAProfileWithoutPlatformsDealsFromTheWholeCatalog() throws Exception {
+        catalogGame(3002, "Splatoon", "Shooter", "Nintendo Switch");
+        randomGames(3002);
+
+        as(BOB_TOKEN, get(WILDCARD))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[*].igdbId", contains(3002)));
+
+        assertThat(randomQuery()).isEqualTo("limit=50");
+    }
+
+    @Test
+    void wildcardSendsAPlatformNameWithAnAmpersandAsOneValue() throws Exception {
+        randomGames();
+
+        as(ALICE_TOKEN, get(WILDCARD).param("scope", "all").param("platform", "Game & Watch")).andExpect(status().isOk());
+
+        assertThat(randomQuery()).isEqualTo("limit=50&platform=Game%20%26%20Watch");
+    }
+
+    // game-service answers at most 500, so eleven platforms share 500 rather than asking for 550.
+    @Test
+    void wildcardCapsTheDrawAtGameServicesCeiling() throws Exception {
+        randomGames();
+        String[] eleven = java.util.stream.IntStream.range(0, 11).mapToObj(i -> "Platform " + i).toArray(String[]::new);
+
+        as(ALICE_TOKEN, get(WILDCARD).param("scope", "all").param("platform", eleven)).andExpect(status().isOk());
+
+        assertThat(randomQuery()).startsWith("limit=500&");
     }
 
     @Test

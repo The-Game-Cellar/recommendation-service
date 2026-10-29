@@ -15,6 +15,7 @@ import java.math.BigDecimal;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
@@ -42,7 +43,7 @@ class WildCardServiceTest {
     void getWildCard_returnsPicks_unauthenticated_caller_skipsCache() {
         // No JwtAuthenticationToken in SecurityContext -> currentUserId() returns null -> empty
         // owned + platforms -> matchesAnyPlatform short-circuits true for every candidate.
-        when(gameServiceClient.getRandomFromCache(anyInt(), anyString()))
+        when(gameServiceClient.getRandomFromCache(anyInt(), any(), anyString()))
                 .thenReturn(List.of(game(1, "First"), game(2, "Second"), game(3, "Third")));
 
         List<RecommendationDTO> result = wildCardService.getWildCard("token", 3);
@@ -53,7 +54,7 @@ class WildCardServiceTest {
 
     @Test
     void getWildCard_emptyCatalog_returnsEmpty() {
-        when(gameServiceClient.getRandomFromCache(anyInt(), anyString())).thenReturn(List.of());
+        when(gameServiceClient.getRandomFromCache(anyInt(), any(), anyString())).thenReturn(List.of());
 
         List<RecommendationDTO> result = wildCardService.getWildCard("token", 10);
 
@@ -62,7 +63,7 @@ class WildCardServiceTest {
 
     @Test
     void getWildCard_setsReason() {
-        when(gameServiceClient.getRandomFromCache(anyInt(), anyString()))
+        when(gameServiceClient.getRandomFromCache(anyInt(), any(), anyString()))
                 .thenReturn(List.of(game(1, "Some Game")));
 
         List<RecommendationDTO> result = wildCardService.getWildCard("token", 10);
@@ -77,7 +78,7 @@ class WildCardServiceTest {
         GameDTO nullId = new GameDTO();
         nullId.setName("No id");
         nullId.setPlatforms(List.of("PC"));
-        when(gameServiceClient.getRandomFromCache(anyInt(), anyString()))
+        when(gameServiceClient.getRandomFromCache(anyInt(), any(), anyString()))
                 .thenReturn(List.of(valid, nullId));
 
         List<RecommendationDTO> result = wildCardService.getWildCard("token", 10);

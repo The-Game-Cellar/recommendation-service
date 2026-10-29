@@ -22,6 +22,8 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
@@ -128,6 +130,10 @@ class RequestValidationTest extends RecommendationServiceTestBase {
     void aValueOutOfRangeAnswers400WithoutAnErrorLog() throws Exception {
         expectBadRequest(get(WILDCARD).param("limit", "0"), ALICE_TOKEN);
         expectBadRequest(get(WILDCARD).param("limit", "51"), ALICE_TOKEN);
+        expectBadRequest(get(WILDCARD).param("scope", "everything"), ALICE_TOKEN);
+        expectBadRequest(get(WILDCARD).param("scope", "MINE"), ALICE_TOKEN);
+        expectBadRequest(get(WILDCARD).param("platform",
+                java.util.stream.IntStream.range(0, 51).mapToObj(i -> "Platform " + i).toArray(String[]::new)), ALICE_TOKEN);
         expectBadRequest(get(SIMILAR + "0"), ALICE_TOKEN);
 
         assertThat(errorLines()).isEmpty();
@@ -165,7 +171,7 @@ class RequestValidationTest extends RecommendationServiceTestBase {
 
     @Test
     void aRealFaultStillAnswers500AndLogsAtError() throws Exception {
-        when(wildCardService.getWildCard(anyString(), anyInt())).thenThrow(new IllegalStateException("boom"));
+        when(wildCardService.getWildCard(anyString(), anyInt(), anyBoolean(), any())).thenThrow(new IllegalStateException("boom"));
 
         send(get(WILDCARD), ALICE_TOKEN)
                 .andExpect(status().isInternalServerError())
