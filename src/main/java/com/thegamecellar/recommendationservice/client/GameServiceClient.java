@@ -92,14 +92,17 @@ public class GameServiceClient {
         }
     }
 
-    public List<GameDTO> getRandomFromCache(int limit, String bearerToken) {
+    public List<GameDTO> getRandomFromCache(int limit, java.util.Collection<String> platforms, String bearerToken) {
         try {
-            String url = UriComponentsBuilder
+            UriComponentsBuilder builder = UriComponentsBuilder
                     .fromUriString(gameServiceUrl + "/api/v1/games/random")
-                    .queryParam("limit", limit)
-                    .toUriString();
+                    .queryParam("limit", limit);
+            if (!platforms.isEmpty()) {
+                builder.queryParam("platform", platforms.toArray());
+            }
+            java.net.URI uri = builder.build().encode().toUri();
             ResponseEntity<GameSearchDTO> response = restTemplate.exchange(
-                    url,
+                    uri,
                     HttpMethod.GET,
                     buildRequest(bearerToken),
                     GameSearchDTO.class

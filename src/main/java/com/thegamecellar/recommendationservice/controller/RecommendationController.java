@@ -18,6 +18,8 @@ import lombok.RequiredArgsConstructor;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.validation.annotation.Validated;
@@ -85,9 +87,11 @@ public class RecommendationController {
     @GetMapping("/wildcard")
     public ResponseEntity<List<RecommendationDTO>> getWildCard(
             Authentication authentication,
-            @RequestParam(defaultValue = "10") @Min(1) @Max(50) int limit) {
+            @RequestParam(defaultValue = "10") @Min(1) @Max(50) int limit,
+            @RequestParam(defaultValue = "mine") @Pattern(regexp = "mine|all") String scope,
+            @RequestParam(required = false) @Size(max = 50) List<String> platform) {
         String token = JwtUtils.getBearerToken(authentication);
-        return ResponseEntity.ok(wildCardService.getWildCard(token, limit));
+        return ResponseEntity.ok(wildCardService.getWildCard(token, limit, "all".equals(scope), platform));
     }
 
     @GetMapping("/similar/{gameId}")

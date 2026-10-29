@@ -105,7 +105,7 @@ All endpoints require JWT. `userId` is extracted from `@AuthenticationPrincipal 
 | POST   | `/api/v1/recommendations/personalized`                     | Three-tier personalized recommendations served from the pre-computed pool. Body `{ limit, recentlyShownIds[] }`. |
 | POST   | `/api/v1/recommendations/personalized/grouped`             | Genre-bucketed rows (up to 5 rows x 15 games + 1 long-tail) from the same pool. Body `{ recentlyShownIds[] }`. |
 | POST   | `/api/v1/recommendations/personalized/grouped/genre`       | Per-row refresh button. Returns one fresh row + enqueues per-genre top-up. Body `{ genre, recentlyShownIds[] }`. |
-| GET    | `/api/v1/recommendations/wildcard?limit={n}`               | Random discovery from game-service catalog, library + platform filter applied in rec-service.        |
+| GET    | `/api/v1/recommendations/wildcard?limit={n}&scope={scope}` | Random games the user does not own, up to 50 drawn per platform. `scope=mine` (default) deals only from the profile's platforms, `scope=all` from every platform. Repeatable `platform` (max 50) narrows either; under `mine` a platform off the profile is ignored. |
 | GET    | `/api/v1/recommendations/similar/{gameId}`                 | Similar games to a given game.                                                                       |
 | GET    | `/api/v1/recommendations/because-you-liked/{gameId}`       | Recommendations anchored to a specific game.                                                         |
 | GET    | `/api/v1/recommendations/dashboard/because-you-liked?excludeSeedIgdbIds={ids}` | Dashboard refresh for a BYL section. Re-rolls seed excluding currently-shown ids. |
